@@ -1,0 +1,97 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "retune"
+version = "0.1.0"
+description = "Retune your AI agents — self-improving evaluation & optimization framework"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Md Shariar Hossain", email = "shmozumder2@gmail.com" },
+]
+keywords = ["ai", "agents", "rag", "self-improving", "langchain", "langgraph", "optimization", "retune"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+]
+
+[project.optional-dependencies]
+langchain = [
+    "langchain-core>=0.2",
+]
+langgraph = [
+    "langgraph>=0.2",
+    "langchain-core>=0.2",
+]
+llm = [
+    "langchain-openai>=0.1",
+    "langchain-core>=0.2",
+]
+anthropic = [
+    "langchain-anthropic>=0.1",
+    "langchain-core>=0.2",
+]
+google = [
+    "langchain-google-genai>=1.0",
+    "langchain-core>=0.2",
+]
+ollama = [
+    "langchain-ollama>=0.1",
+    "langchain-core>=0.2",
+]
+agents = [
+    "langgraph>=0.2",
+    "langchain-core>=0.2",
+    "langchain-openai>=0.1",
+]
+server = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+all = [
+    "retune[langchain,langgraph,llm,anthropic,google,agents,server]",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://agentretune.com"
+Repository = "https://github.com/agentretune/retune"
+Documentation = "https://agentretune.com/docs"
+Changelog = "https://github.com/agentretune/retune/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/retune"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
