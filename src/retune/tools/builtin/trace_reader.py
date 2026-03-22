@@ -108,7 +108,6 @@ class TraceReaderTool(RetuneTool):
 
         try:
             if isinstance(started, str) and isinstance(ended, str):
-                fmt = "%Y-%m-%dT%H:%M:%S"
                 # Handle ISO format with microseconds and timezone
                 s = datetime.fromisoformat(started.replace("Z", "+00:00"))
                 e = datetime.fromisoformat(ended.replace("Z", "+00:00"))

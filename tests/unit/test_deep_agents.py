@@ -1,14 +1,11 @@
 """Tests for Deep Agent v2 evaluator and optimizer with mocked deepagents."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from retune.core.enums import StepType
 from retune.core.models import (
     EvalResult,
     ExecutionTrace,
-    OptimizationConfig,
     Span,
     Step,
 )
@@ -212,7 +209,11 @@ class TestOptimizerDeepAgent:
                 {
                     "eval_results": [
                         {"evaluator_name": "deep_evaluator", "score": 0.4, "details": {}},
-                        {"evaluator_name": "correctness", "score": 0.3, "details": {"correctness": 0.3}},
+                        {
+                            "evaluator_name": "correctness",
+                            "score": 0.3,
+                            "details": {"correctness": 0.3},
+                        },
                     ],
                     "steps": [],
                 }

@@ -1,8 +1,7 @@
 """Tests for Retuner -- the core of the system."""
 
-import pytest
 
-from retune import Retuner, Mode
+from retune import Mode, Retuner
 from retune.core.enums import SuggestionStatus
 from retune.core.models import (
     EvalResult,
@@ -35,7 +34,9 @@ class TestRetuner:
             agent=mock_agent,
             adapter="custom",
             mode=Mode.OFF,
-            storage=__import__("retune.storage.sqlite_storage", fromlist=["SQLiteStorage"]).SQLiteStorage(str(tmp_path / "test.db")),
+            storage=__import__(
+            "retune.storage.sqlite_storage", fromlist=["SQLiteStorage"]
+        ).SQLiteStorage(str(tmp_path / "test.db")),
         )
         response = wrapped.run("hello")
         assert response.output == "Answer: hello"
@@ -190,7 +191,7 @@ class TestSuggestionManagement:
     def test_suggestions_start_pending(self, tmp_path):
         """Suggestions from IMPROVE mode should be PENDING."""
         wrapped = self._make_wrapper(tmp_path)
-        resp = wrapped.run("test")
+        wrapped.run("test")
 
         # All suggestions (if any) should be PENDING
         for s in wrapped.get_all_suggestions():

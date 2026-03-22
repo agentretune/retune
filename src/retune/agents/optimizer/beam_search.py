@@ -19,7 +19,6 @@ from retune.agents.optimizer.beam_config import BeamSearchConfig
 from retune.core.models import (
     BeamCandidate,
     BeamSearchResult,
-    ExecutionTrace,
     OptimizationConfig,
 )
 from retune.tools.builtin.credit_assigner import CreditAssignerTool
@@ -281,7 +280,9 @@ class BeamSearchAPO:
             if weaknesses:
                 parts.append("Prompt issues:\n" + "\n".join(f"- {w}" for w in weaknesses))
             if bottleneck_summary:
-                parts.append("Bottleneck steps:\n" + "\n".join(f"- {b}" for b in bottleneck_summary))
+                parts.append(
+                    "Bottleneck steps:\n" + "\n".join(f"- {b}" for b in bottleneck_summary)
+                )
             if parts:
                 return "\n\n".join(parts)
             return "The prompt needs improvement but specific issues could not be determined."

@@ -2,7 +2,6 @@
 
 import pytest
 
-from retune.core.enums import Mode
 from retune.core.models import OptimizationConfig
 from retune.storage.sqlite_storage import SQLiteStorage
 

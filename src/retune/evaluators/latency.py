@@ -43,7 +43,10 @@ class LatencyEvaluator(BaseEvaluator):
         return EvalResult(
             evaluator_name=self.name,
             score=round(score, 3),
-            reasoning=f"Total: {duration:.0f}ms. Slowest step: {slowest_step} ({slowest_ms:.0f}ms).",
+            reasoning=(
+                f"Total: {duration:.0f}ms. "
+                f"Slowest step: {slowest_step} ({slowest_ms:.0f}ms)."
+            ),
             details={
                 "duration_ms": duration,
                 "slowest_step": slowest_step,

@@ -21,7 +21,6 @@ from retune.agents.optimizer.beam_search import BeamSearchAPO
 from retune.core.models import ExecutionTrace, OptimizationConfig, Suggestion
 from retune.optimizers.base import BaseOptimizer
 from retune.tools.builtin.config_search import ConfigSearchTool
-from retune.tools.builtin.credit_assigner import CreditAssignerTool
 from retune.tools.builtin.metrics import MetricsCalculatorTool
 from retune.tools.builtin.prompt_analyzer import PromptAnalyzerTool
 
@@ -59,7 +58,6 @@ def _get_llm(model: str) -> Any:
 def planner_node(state: dict) -> dict:
     """Analyze traces and decide which optimization strategies to run."""
     traces = state.get("traces", [])
-    current_config = state.get("current_config", {})
 
     if not traces:
         return {"strategies_to_run": [], "strategies_completed": [], "analysis_summary": {}}
@@ -234,7 +232,6 @@ def apo_rewrite_node(state: dict) -> dict:
 
 def config_tuner_node(state: dict) -> dict:
     """Tune config parameters based on eval scores and trace analysis."""
-    traces = state.get("traces", [])
     current_config = state.get("current_config", {})
     analysis = state.get("analysis_summary", {})
     model = state.get("model", "gpt-4o-mini")
@@ -295,7 +292,10 @@ def config_tuner_node(state: dict) -> dict:
                 "param_name": "max_tokens",
                 "old_value": current_max,
                 "new_value": 1024,
-                "reasoning": f"Latency score is {latency_score:.2f}. Reducing max tokens to improve speed.",
+                "reasoning": (
+                    f"Latency score is {latency_score:.2f}. "
+                    f"Reducing max tokens to improve speed."
+                ),
                 "confidence": 0.6,
                 "category": "agent",
             })
@@ -308,7 +308,10 @@ def config_tuner_node(state: dict) -> dict:
             "param_name": "reasoning_strategy",
             "old_value": current_strategy or "none",
             "new_value": "cot",
-            "reasoning": f"Reasoning score is {reasoning_score:.2f}. Chain-of-thought improves deliberate decision-making.",
+            "reasoning": (
+                f"Reasoning score is {reasoning_score:.2f}. "
+                f"Chain-of-thought improves deliberate decision-making."
+            ),
             "confidence": 0.80,
             "category": "agent",
         })
@@ -319,7 +322,10 @@ def config_tuner_node(state: dict) -> dict:
             "param_name": "use_reranker",
             "old_value": False,
             "new_value": True,
-            "reasoning": f"Retrieval score is {retrieval_score:.2f}. Cross-encoder reranking improves precision by 20-40%.",
+            "reasoning": (
+                f"Retrieval score is {retrieval_score:.2f}. "
+                f"Cross-encoder reranking improves precision by 20-40%."
+            ),
             "confidence": 0.75,
             "category": "rag",
         })
@@ -511,7 +517,6 @@ def _build_deep_optimizer_agent(model: str) -> Any:
         get_all_optimizer_subagent_definitions,
     )
     from retune.tools.builtin.config_search import ConfigSearchTool
-    from retune.tools.builtin.metrics import MetricsCalculatorTool
     from retune.tools.builtin.prompt_analyzer import PromptAnalyzerTool
     from retune.tools.builtin.rollout_runner import RolloutRunnerTool
 

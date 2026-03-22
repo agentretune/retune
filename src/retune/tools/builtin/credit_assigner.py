@@ -64,7 +64,7 @@ class CreditAssignerTool(RetuneTool):
             step_type = step.get("step_type", "unknown")
             name = step.get("name", "unknown")
             output_data = step.get("output_data", {})
-            input_data = step.get("input_data", {})
+
 
             # Base blame: later steps get more blame (they're closer to output)
             position_weight = (i + 1) / total_steps
@@ -94,7 +94,9 @@ class CreditAssignerTool(RetuneTool):
                         reasons.append("Retrieved docs not reflected in response — ignored by LLM")
                     else:
                         blame = 0.1
-                        reasons.append(f"Retrieval successful — {doc_words_used} terms used in response")
+                        reasons.append(
+                            f"Retrieval successful — {doc_words_used} terms used in response"
+                        )
 
             elif step_type == "tool_call":
                 tool_output = str(output_data.get("output", "")).lower()
@@ -119,7 +121,9 @@ class CreditAssignerTool(RetuneTool):
 
                 if is_failure:
                     blame = 0.6 * position_weight
-                    reasons.append("LLM generated the final response — shares blame for quality issues")
+                    reasons.append(
+                        "LLM generated the final response — shares blame for quality issues"
+                    )
                     if total_tokens > 5000:
                         blame += 0.1
                         reasons.append(f"High token usage ({total_tokens}) suggests inefficiency")

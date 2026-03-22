@@ -105,7 +105,7 @@ class TestBeamSearchAPO:
 
     def test_critique_heuristic_fallback(self):
         """Test critique falls back to heuristic when LLM unavailable."""
-        apo = BeamSearchAPO()
+        BeamSearchAPO()
 
         with patch("retune.agents.optimizer.beam_search.BeamSearchAPO._critique") as mock:
             mock.return_value = "Issues found:\n- Missing role definition"
@@ -203,7 +203,6 @@ class TestBeamSearchAPO:
         apo = BeamSearchAPO(config=cfg)
 
         mock_adapter = MagicMock()
-        mock_evaluator = MagicMock()
 
         # Replace rollout runner with a mock
         mock_rollout = MagicMock()

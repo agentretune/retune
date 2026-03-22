@@ -12,7 +12,7 @@ from retune.core.exceptions import AdapterError
 from retune.core.models import ExecutionTrace, OptimizationConfig, Step
 
 try:
-    from langgraph.graph.state import CompiledStateGraph
+    from langgraph.graph.state import CompiledStateGraph  # noqa: F401
 
     HAS_LANGGRAPH = True
 except ImportError:

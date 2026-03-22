@@ -6,7 +6,6 @@ from typing import Any
 
 from retune.tools.base import RetuneTool
 
-
 # Known parameter ranges and their optimization heuristics
 PARAM_SPACE = {
     "top_k": {

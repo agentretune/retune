@@ -1,6 +1,5 @@
 """Tests for SQLite storage."""
 
-import pytest
 
 from retune.core.models import ExecutionTrace, OptimizationConfig
 from retune.storage.sqlite_storage import SQLiteStorage

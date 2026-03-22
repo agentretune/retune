@@ -2,7 +2,7 @@
 
 import pytest
 
-from retune import Retuner, Mode, OptimizationConfig
+from retune import Mode, OptimizationConfig, Retuner
 from retune.core.models import EvalResult, ExecutionTrace
 from retune.evaluators.base import BaseEvaluator
 from retune.evaluators.latency import LatencyEvaluator

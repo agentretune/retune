@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
@@ -60,7 +59,8 @@ class SQLiteStorage(BaseStorage):
         conn = self._get_conn()
         try:
             conn.execute(
-                "INSERT OR REPLACE INTO traces (trace_id, session_id, query, data) VALUES (?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO traces "
+                "(trace_id, session_id, query, data) VALUES (?, ?, ?, ?)",
                 (
                     trace.trace_id,
                     trace.session_id,

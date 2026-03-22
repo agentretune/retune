@@ -112,7 +112,6 @@ def tool_auditor_node(state: dict) -> dict:
     trace = state["trace"]
     steps = trace.get("steps", [])
     tool_steps = [s for s in steps if s.get("step_type") == "tool_call"]
-    query = trace.get("query", "")
     response = str(trace.get("response", ""))
 
     audit = {
@@ -182,13 +181,16 @@ def hallucination_detector_node(state: dict) -> dict:
     try:
         llm = _get_llm(model)
         prompt = (
-            "You are a hallucination detector. Compare the RESPONSE against the SOURCE material.\n\n"
+            "You are a hallucination detector. Compare the RESPONSE "
+            "against the SOURCE material.\n\n"
             f"SOURCE MATERIAL:\n{source_text[:3000]}\n\n"
             f"RESPONSE:\n{response[:2000]}\n\n"
             "List each factual claim in the response. For each claim, state whether it is "
             "'grounded' (supported by source material) or 'ungrounded' (not in sources).\n"
-            "Respond in JSON: {\"claims\": [{\"claim\": \"...\", \"status\": \"grounded|ungrounded\"}], "
-            "\"hallucination_score\": 0.0-1.0 where 0=no hallucinations, 1=fully hallucinated}"
+            "Respond in JSON: {\"claims\": [{\"claim\": \"...\", "
+            "\"status\": \"grounded|ungrounded\"}], "
+            "\"hallucination_score\": 0.0-1.0 where "
+            "0=no hallucinations, 1=fully hallucinated}"
         )
         result = llm.invoke(prompt)
         content = result.content if hasattr(result, "content") else str(result)

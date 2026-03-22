@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from retune.core.llm import create_llm, detect_provider, set_default_llm
 
 
@@ -92,8 +90,8 @@ class TestSetDefaultLLM:
             llm_module._default_llm = None
 
     def test_default_is_none_initially(self):
-        from retune.core.llm import get_default_llm
         import retune.core.llm as llm_module
+        from retune.core.llm import get_default_llm
 
         llm_module._default_llm = None
         assert get_default_llm() is None

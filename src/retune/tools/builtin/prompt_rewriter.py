@@ -39,7 +39,10 @@ class PromptRewriterTool(RetuneTool):
             },
             "style": {
                 "type": "string",
-                "description": "Rewrite style: 'conservative' (minimal changes) or 'aggressive' (major rewrite)",
+                "description": (
+                    "Rewrite style: 'conservative' (minimal changes) "
+                    "or 'aggressive' (major rewrite)"
+                ),
                 "default": "conservative",
             },
         },
@@ -70,14 +73,16 @@ class PromptRewriterTool(RetuneTool):
             )
 
             prompt = (
-                "You are an expert prompt engineer. Rewrite the system prompt to address the critique.\n\n"
+                "You are an expert prompt engineer. "
+                "Rewrite the system prompt to address the critique.\n\n"
                 f"CURRENT PROMPT:\n\"\"\"\n{current_prompt}\n\"\"\"\n\n"
                 f"CRITIQUE (textual gradient):\n{critique[:2000]}\n\n"
                 f"STYLE: {style_instruction}\n\n"
                 "REQUIREMENTS:\n"
                 "1. Address every critique point\n"
                 "2. Keep the prompt concise but complete (100-300 words)\n"
-                "3. Include: role definition, step-by-step instructions, constraints, output format\n"
+                "3. Include: role definition, step-by-step instructions, "
+                "constraints, output format\n"
                 "4. If tools are mentioned, include specific tool usage guidelines\n"
                 "5. Add reasoning instructions if appropriate\n\n"
                 "Respond in JSON:\n"

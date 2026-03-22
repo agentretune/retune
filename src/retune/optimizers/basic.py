@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from retune.core.enums import StepType
 from retune.core.models import ExecutionTrace, OptimizationConfig, Suggestion
 from retune.optimizers.base import BaseOptimizer
 
@@ -213,7 +212,10 @@ class BasicOptimizer(BaseOptimizer):
                     param_name="max_tokens",
                     old_value=current_max,
                     new_value=max(current_max // 2, 512),
-                    reasoning=f"Average token usage is {avg_tokens:.0f}. Reducing max_tokens to control costs.",
+                    reasoning=(
+                        f"Average token usage is {avg_tokens:.0f}. "
+                        "Reducing max_tokens to control costs."
+                    ),
                     confidence=0.5,
                     category="agent",
                 )

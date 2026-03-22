@@ -1,5 +1,7 @@
 """Tests for core data models."""
 
+import pytest
+
 from retune.core.enums import Mode, StepType
 from retune.core.models import (
     EvalResult,
@@ -8,7 +10,6 @@ from retune.core.models import (
     Step,
     Suggestion,
     TokenUsage,
-    WrapperResponse,
 )
 
 
@@ -108,6 +109,3 @@ class TestSuggestion:
         )
         assert s.param_name == "top_k"
         assert s.confidence == 0.8
-
-
-import pytest

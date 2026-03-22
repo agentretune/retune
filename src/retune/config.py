@@ -33,8 +33,8 @@ class RetuneSettings(BaseSettings):
     beam_width: int = Field(default=2, description="Beam search width (candidates kept per round)")
     beam_branch_factor: int = Field(default=2, description="Rewrites per candidate per round")
     beam_rounds: int = Field(default=2, description="Number of beam search rounds")
-    beam_max_rollout_queries: int = Field(default=5, description="Max validation queries per candidate")
-    beam_cost_budget_usd: float = Field(default=0.50, description="Max budget for beam search (USD)")
+    beam_max_rollout_queries: int = Field(default=5, description="Max queries per candidate")
+    beam_cost_budget_usd: float = Field(default=0.50, description="Beam search budget (USD)")
 
     @property
     def storage_full_path(self) -> Path:
