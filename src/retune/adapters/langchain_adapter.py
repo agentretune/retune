@@ -250,7 +250,7 @@ class LangChainAdapter(BaseAdapter):
         elif hasattr(result, "content"):
             response_text = result.content
         elif isinstance(result, dict):
-            response_text = result.get("output", result.get("answer", str(result)))
+            response_text = result.get("output") or result.get("answer") or str(result)
         else:
             response_text = str(result)
 

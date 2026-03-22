@@ -503,7 +503,7 @@ def _route_next_strategy(state: dict) -> str:
         if strategy not in completed:
             if strategy == APO:
                 return "apo_evaluate"
-            return strategy
+            return str(strategy)
 
     return "aggregator"
 
@@ -606,14 +606,14 @@ class OptimizerDeepAgent(BaseOptimizer):
 
         sg = StateGraph(OptimizerState)
 
-        sg.add_node("planner", planner_node)
-        sg.add_node("apo_evaluate", apo_evaluate_node)
-        sg.add_node("apo_critique", apo_critique_node)
-        sg.add_node("apo_rewrite", apo_rewrite_node)
-        sg.add_node("config_tuner", config_tuner_node)
-        sg.add_node("tool_curator", tool_curator_node)
+        sg.add_node("planner", planner_node)  # type: ignore[type-var]
+        sg.add_node("apo_evaluate", apo_evaluate_node)  # type: ignore[type-var]
+        sg.add_node("apo_critique", apo_critique_node)  # type: ignore[type-var]
+        sg.add_node("apo_rewrite", apo_rewrite_node)  # type: ignore[type-var]
+        sg.add_node("config_tuner", config_tuner_node)  # type: ignore[type-var]
+        sg.add_node("tool_curator", tool_curator_node)  # type: ignore[type-var]
         sg.add_node("router", lambda state: {})
-        sg.add_node("aggregator", aggregator_node)
+        sg.add_node("aggregator", aggregator_node)  # type: ignore[type-var]
 
         sg.set_entry_point("planner")
         sg.add_edge("planner", "router")
@@ -743,6 +743,7 @@ class OptimizerDeepAgent(BaseOptimizer):
         }
 
         try:
+            assert self._graph is not None
             result = self._graph.invoke(initial_state)
             suggestions = []
             for s in result.get("final_suggestions", []):
@@ -804,6 +805,7 @@ class OptimizerDeepAgent(BaseOptimizer):
 
         input_message = "".join(input_parts)
 
+        assert self._deep_agent is not None
         result = self._deep_agent.invoke({"messages": [("human", input_message)]})
 
         return self._parse_deep_agent_suggestions(result, current_config, beam_result)

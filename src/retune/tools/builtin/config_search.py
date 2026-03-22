@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from retune.tools.base import RetuneTool
 
@@ -93,12 +93,14 @@ class ConfigSearchTool(RetuneTool):
             }
 
         candidates = []
-        lo, hi = spec["range"]
+        range_val = cast(list[float], spec["range"])
+        lo: float = range_val[0]
+        hi: float = range_val[1]
 
         if current_value is None:
             current_value = spec["default"]
 
-        current_value = float(current_value) if spec["type"] == "float" else int(current_value)
+        current_value = float(current_value) if spec["type"] == "float" else int(current_value)  # type: ignore[arg-type]
 
         if direction == "increase":
             steps = [1.25, 1.5, 2.0] if spec["type"] == "int" else [0.1, 0.2, 0.3]
@@ -130,8 +132,9 @@ class ConfigSearchTool(RetuneTool):
 
         elif direction == "explore":
             # Generate a spread of values around the default
-            explore_vals = [lo, spec["default"], hi]
-            midpoints = [(lo + spec["default"]) / 2, (spec["default"] + hi) / 2]
+            default_val = cast(float, spec["default"])
+            explore_vals: list[float] = [lo, default_val, hi]
+            midpoints = [(lo + default_val) / 2, (default_val + hi) / 2]
             explore_vals.extend(midpoints)
             explore_vals = sorted(set(explore_vals))
 

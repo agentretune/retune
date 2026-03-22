@@ -35,9 +35,9 @@ class TraceReaderTool(RetuneTool):
         # Step breakdown
         step_summaries = []
         total_tokens = 0
-        total_duration_ms = 0
+        total_duration_ms: float = 0
         slowest_step = None
-        slowest_duration = 0
+        slowest_duration: float = 0
 
         for step in steps:
             step_type = step.get("step_type", "unknown")
@@ -82,7 +82,7 @@ class TraceReaderTool(RetuneTool):
             step_summaries.append(summary)
 
         # Step type counts
-        type_counts = {}
+        type_counts: dict[str, int] = {}
         for s in step_summaries:
             t = s["step_type"]
             type_counts[t] = type_counts.get(t, 0) + 1
@@ -113,7 +113,7 @@ class TraceReaderTool(RetuneTool):
                 e = datetime.fromisoformat(ended.replace("Z", "+00:00"))
                 return (e - s).total_seconds() * 1000
             elif hasattr(started, "timestamp") and hasattr(ended, "timestamp"):
-                return (ended - started).total_seconds() * 1000
+                return float((ended - started).total_seconds() * 1000)
         except Exception:
             pass
         return 0.0

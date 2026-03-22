@@ -33,7 +33,7 @@ class LatencyEvaluator(BaseEvaluator):
 
         # Find slowest step
         slowest_step = None
-        slowest_ms = 0
+        slowest_ms: float = 0
         for step in trace.steps:
             step_ms = (step.ended_at - step.started_at).total_seconds() * 1000
             if step_ms > slowest_ms:

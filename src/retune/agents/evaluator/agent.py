@@ -126,7 +126,7 @@ def tool_auditor_node(state: dict) -> dict:
         words_in_response = sum(1 for w in output_words if w in response.lower())
         output_used = words_in_response > 0
 
-        audit["tool_details"].append({
+        audit["tool_details"].append({  # type: ignore[attr-defined]
             "name": step.get("name"),
             "output_used_in_response": output_used,
             "output_preview": tool_output[:200],
@@ -137,7 +137,8 @@ def tool_auditor_node(state: dict) -> dict:
         audit["score"] = 1.0
         audit["reasoning"] = "No tool calls to audit."
     else:
-        used_count = sum(1 for d in audit["tool_details"] if d["output_used_in_response"])
+        tool_details = list(audit["tool_details"])  # type: ignore[call-overload]
+        used_count = sum(1 for d in tool_details if d["output_used_in_response"])
         efficiency = used_count / len(tool_steps) if tool_steps else 1.0
         call_penalty = max(0, (len(tool_steps) - 2) * 0.1)
         audit["score"] = round(max(0, min(1, efficiency - call_penalty)), 2)
@@ -219,7 +220,7 @@ def hallucination_detector_node(state: dict) -> dict:
         check["ungrounded_claims"] = len(found)
         check["fallback"] = True
 
-    score = round(1.0 - check.get("hallucination_score", 0.5), 2)
+    score = round(1.0 - float(check.get("hallucination_score", 0.5)), 2)  # type: ignore[arg-type]
     check["score"] = score
     check["reasoning"] = (
         f"{check['grounded_claims']} grounded, {check['ungrounded_claims']} ungrounded claims. "
@@ -349,7 +350,7 @@ def _route_next(state: dict) -> str:
 
     for subagent in to_run:
         if subagent not in completed:
-            return subagent
+            return str(subagent)
 
     return "synthesizer"
 
@@ -439,13 +440,13 @@ class EvaluatorDeepAgent(BaseEvaluator):
 
         sg = StateGraph(EvaluatorState)
 
-        sg.add_node("supervisor", supervisor_node)
-        sg.add_node(TRACE_ANALYZER, trace_analyzer_node)
-        sg.add_node(CREDIT_ASSIGNER, credit_assigner_node)
-        sg.add_node(TOOL_AUDITOR, tool_auditor_node)
-        sg.add_node(HALLUCINATION_DETECTOR, hallucination_detector_node)
-        sg.add_node("router", lambda state: {})
-        sg.add_node("synthesizer", synthesizer_node)
+        sg.add_node("supervisor", supervisor_node)  # type: ignore[type-var]
+        sg.add_node(TRACE_ANALYZER, trace_analyzer_node)  # type: ignore[type-var]
+        sg.add_node(CREDIT_ASSIGNER, credit_assigner_node)  # type: ignore[type-var]
+        sg.add_node(TOOL_AUDITOR, tool_auditor_node)  # type: ignore[type-var]
+        sg.add_node(HALLUCINATION_DETECTOR, hallucination_detector_node)  # type: ignore[type-var]
+        sg.add_node("router", lambda state: {})  # type: ignore[type-var]
+        sg.add_node("synthesizer", synthesizer_node)  # type: ignore[type-var]
 
         sg.set_entry_point("supervisor")
         sg.add_edge("supervisor", "router")
@@ -490,7 +491,7 @@ class EvaluatorDeepAgent(BaseEvaluator):
             f"TRACE JSON:\n{trace_json[:4000]}"
         )
 
-        result = self._deep_agent.invoke({"messages": [("human", input_message)]})
+        result = self._deep_agent.invoke({"messages": [("human", input_message)]})  # type: ignore[attr-defined]
 
         # Parse the deep agent's response into an EvalResult
         return self._parse_deep_agent_result(result)
@@ -580,7 +581,7 @@ class EvaluatorDeepAgent(BaseEvaluator):
         }
 
         try:
-            result = self._graph.invoke(initial_state)
+            result = self._graph.invoke(initial_state)  # type: ignore[attr-defined]
             final = result.get("final_eval", {})
             return EvalResult(
                 evaluator_name=final.get("evaluator_name", self.name),

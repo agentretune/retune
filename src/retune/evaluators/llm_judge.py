@@ -133,7 +133,7 @@ class LLMJudgeEvaluator(BaseEvaluator):
         """Parse the LLM judge's JSON response."""
         # Try direct JSON parse
         try:
-            return json.loads(content)
+            return dict(json.loads(content))
         except json.JSONDecodeError:
             pass
 
@@ -141,7 +141,7 @@ class LLMJudgeEvaluator(BaseEvaluator):
         json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
         if json_match:
             try:
-                return json.loads(json_match.group(1))
+                return dict(json.loads(json_match.group(1)))
             except json.JSONDecodeError:
                 pass
 
@@ -149,7 +149,7 @@ class LLMJudgeEvaluator(BaseEvaluator):
         json_match = re.search(r"\{[^{}]*\}", content, re.DOTALL)
         if json_match:
             try:
-                return json.loads(json_match.group())
+                return dict(json.loads(json_match.group()))
             except json.JSONDecodeError:
                 pass
 

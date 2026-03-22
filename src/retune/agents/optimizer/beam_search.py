@@ -316,4 +316,4 @@ class BeamSearchAPO:
         )
 
         self._cost_spent += result.get("total_cost", 0.0)
-        return result.get("avg_score", 0.0)
+        return float(result.get("avg_score", 0.0))
