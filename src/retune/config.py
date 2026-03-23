@@ -29,6 +29,13 @@ class RetuneSettings(BaseSettings):
     weight_latency: float = Field(default=0.1)
     weight_cost: float = Field(default=0.15)
 
+    # Cloud sync
+    api_key: str | None = Field(default=None, description="API key for agentretune.com")
+    cloud_base_url: str = Field(
+        default="https://api.agentretune.com",
+        description="Cloud API base URL",
+    )
+
     # Beam Search APO defaults
     beam_width: int = Field(default=2, description="Beam search width (candidates kept per round)")
     beam_branch_factor: int = Field(default=2, description="Rewrites per candidate per round")

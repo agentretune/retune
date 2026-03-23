@@ -82,29 +82,30 @@ class CreditAssignerTool(RetuneTool):
                     reasons.append("Only 1 document retrieved — insufficient context")
                 else:
                     # Check if retrieved docs were used
+                    from retune.utils.text_similarity import text_overlap_score
+
                     docs = output_data.get("documents", [])
-                    doc_words_used = 0
+                    doc_overlap = 0.0
                     for doc in docs:
                         content = str(doc.get("content", "")).lower()
-                        words = [w for w in content.split() if len(w) > 4][:10]
-                        doc_words_used += sum(1 for w in words if w in response)
+                        if content:
+                            doc_overlap = max(doc_overlap, text_overlap_score(content, response))
 
-                    if doc_words_used == 0:
+                    if doc_overlap < 0.05:
                         blame = 0.6
                         reasons.append("Retrieved docs not reflected in response — ignored by LLM")
                     else:
                         blame = 0.1
                         reasons.append(
-                            f"Retrieval successful — {doc_words_used} terms used in response"
+                            f"Retrieval successful — "
+                            f"{doc_overlap:.0%} content overlap"
                         )
 
             elif step_type == "tool_call":
                 tool_output = str(output_data.get("output", "")).lower()
-                # Check if tool output was used in response
-                tool_words = [w for w in tool_output.split() if len(w) > 4][:10]
-                words_used = sum(1 for w in tool_words if w in response)
+                tool_overlap = text_overlap_score(tool_output, response) if tool_output else 0.0
 
-                if words_used == 0 and tool_output:
+                if tool_overlap < 0.05 and tool_output:
                     blame = 0.7
                     reasons.append(f"Tool '{name}' output was IGNORED — wasteful call")
                 elif not tool_output:
@@ -112,7 +113,10 @@ class CreditAssignerTool(RetuneTool):
                     reasons.append(f"Tool '{name}' returned empty output")
                 else:
                     blame = 0.1
-                    reasons.append(f"Tool '{name}' output used in response ({words_used} terms)")
+                    reasons.append(
+                        f"Tool '{name}' output used in response "
+                        f"({tool_overlap:.0%} overlap)"
+                    )
 
             elif step_type == "llm_call":
                 # LLM is always somewhat responsible for the final output
@@ -149,9 +153,52 @@ class CreditAssignerTool(RetuneTool):
                 "reasons": reasons,
             })
 
+        # === Causal credit assignment pass ===
+        # For each step, compute unique information contribution
+        step_outputs = []
+        for step in steps:
+            od = step.get("output_data", {})
+            output = str(od.get("output", "") or od.get("response", "") or od.get("documents", ""))
+            step_outputs.append(output.lower())
+
+        if response and any(step_outputs):
+            from retune.utils.text_similarity import unique_information_score
+
+            for i, credit in enumerate(credits):
+                if len(step_outputs[i]) < 20:
+                    credit["causal_contribution"] = 0.0
+                    continue
+
+                other_outputs = [o for j, o in enumerate(step_outputs) if j != i]
+                causal = unique_information_score(
+                    step_outputs[i], response, other_outputs
+                )
+                credit["causal_contribution"] = round(causal, 3)
+
+                # Blend heuristic blame with causal analysis
+                # High causal contribution = useful step = lower blame
+                heuristic_blame = credit["blame_score"]
+                causal_adjustment = max(0, 1.0 - causal * 3)
+                credit["blame_score"] = round(
+                    0.4 * heuristic_blame + 0.6 * causal_adjustment, 2
+                )
+                credit["is_bottleneck"] = credit["blame_score"] >= 0.5
+
+                if causal > 0.05:
+                    credit["reasons"].append(
+                        f"Causal: {causal:.0%} unique info contributed to response"
+                    )
+
         # Find top bottlenecks
         bottlenecks = [c for c in credits if c["is_bottleneck"]]
         bottlenecks.sort(key=lambda x: x["blame_score"], reverse=True)
+
+        # Find top causal contributors
+        contributors = sorted(
+            [c for c in credits if c.get("causal_contribution", 0) > 0.05],
+            key=lambda x: x.get("causal_contribution", 0),
+            reverse=True,
+        )
 
         # Summary
         if bottlenecks:
@@ -160,12 +207,19 @@ class CreditAssignerTool(RetuneTool):
                 f"Primary bottleneck: [{top['step_type']}] {top['name']} "
                 f"(blame={top['blame_score']:.2f}). {top['reasons'][0]}"
             )
+        elif contributors:
+            top_c = contributors[0]
+            summary = (
+                f"Execution healthy. Top contributor: [{top_c['step_type']}] "
+                f"{top_c['name']} ({top_c['causal_contribution']:.0%} unique info)."
+            )
         else:
             summary = "No significant bottlenecks found — execution looks healthy."
 
         return {
             "credits": credits,
             "bottlenecks": bottlenecks,
+            "contributors": contributors,
             "summary": summary,
             "overall_score": round(overall_score, 2),
             "is_failure": is_failure,

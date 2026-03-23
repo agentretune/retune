@@ -41,6 +41,10 @@ def _lazy_load(name: str) -> None:
             from retune.evaluators.cost import CostEvaluator
 
             register_evaluator("cost", CostEvaluator)
+        elif name == "pairwise_judge":
+            from retune.evaluators.pairwise_judge import PairwiseJudgeEvaluator
+
+            register_evaluator("pairwise_judge", PairwiseJudgeEvaluator)
         elif name == "deep":
             from retune.agents.evaluator.agent import EvaluatorDeepAgent
 

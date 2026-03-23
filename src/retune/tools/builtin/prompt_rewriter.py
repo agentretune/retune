@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import Any
 
 from retune.tools.base import RetuneTool
@@ -85,30 +83,34 @@ class PromptRewriterTool(RetuneTool):
                 "constraints, output format\n"
                 "4. If tools are mentioned, include specific tool usage guidelines\n"
                 "5. Add reasoning instructions if appropriate\n\n"
-                "Respond in JSON:\n"
-                '{"rewritten_prompt": "<the improved prompt>", '
-                '"changes_made": ["<list of specific changes>"], '
-                '"confidence": <float 0.0-1.0>}'
+                "Rewrite the prompt addressing every critique point."
             )
 
-            result = llm.invoke(prompt)
-            content = result.content if hasattr(result, "content") else str(result)
+            from retune.core.schemas import PromptRewriteOutput
 
-            json_match = re.search(r"\{.*\}", content, re.DOTALL)
-            if json_match:
-                parsed = json.loads(json_match.group())
+            try:
+                structured_llm = llm.with_structured_output(PromptRewriteOutput)
+                rewrite = structured_llm.invoke(prompt)
+                return {
+                    "rewritten_prompt": rewrite.rewritten_prompt,
+                    "changes_made": [rewrite.changes_summary] if rewrite.changes_summary else [],
+                    "confidence": rewrite.confidence,
+                }
+            except Exception:
+                # Fallback to text parsing
+                result = llm.invoke(prompt)
+                content = result.content if hasattr(result, "content") else str(result)
+                from retune.utils.json_extract import extract_json_or_default
+                parsed = extract_json_or_default(content, {
+                    "rewritten_prompt": content.strip(),
+                    "changes_made": ["Full rewrite (could not parse structured response)"],
+                    "confidence": 0.4,
+                })
                 return {
                     "rewritten_prompt": parsed.get("rewritten_prompt", ""),
                     "changes_made": parsed.get("changes_made", []),
                     "confidence": parsed.get("confidence", 0.6),
                 }
-
-            # Fallback: treat entire response as rewritten prompt
-            return {
-                "rewritten_prompt": content.strip(),
-                "changes_made": ["Full rewrite (could not parse structured response)"],
-                "confidence": 0.4,
-            }
 
         except ImportError:
             logger.warning("LLM provider not available, using heuristic rewrite")

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Any
 
 from retune.config import settings
 from retune.core.exceptions import EvaluatorError
 from retune.core.models import EvalResult, ExecutionTrace
+from retune.core.schemas import JudgeOutput
 from retune.evaluators.base import BaseEvaluator
 
 JUDGE_PROMPT = """You are an expert evaluator for AI agent/RAG system outputs.
@@ -18,7 +17,7 @@ Evaluate the following agent execution:
 **User Query:** {query}
 
 **Agent Response:** {response}
-
+{expected_section}
 **Execution Steps:**
 {steps_summary}
 
@@ -29,17 +28,7 @@ Rate the response on these dimensions (0.0 to 1.0):
 3. **Relevance**: Is the response relevant to what was asked?
 4. **Coherence**: Is the response well-structured and easy to understand?
 
-Respond in this exact JSON format:
-{{
-    "overall_score": <float 0.0-1.0>,
-    "correctness": <float>,
-    "completeness": <float>,
-    "relevance": <float>,
-    "coherence": <float>,
-    "reasoning": "<brief explanation of your scores>"
-}}
-
-Only output the JSON, nothing else."""
+Rate each dimension from 0.0 to 1.0 and provide brief reasoning."""
 
 
 class LLMJudgeEvaluator(BaseEvaluator):
@@ -83,18 +72,35 @@ class LLMJudgeEvaluator(BaseEvaluator):
         # Build steps summary
         steps_summary = self._format_steps(trace)
 
+        # Build expected answer section
+        expected = trace.metadata.get("expected_answer")
+        expected_section = ""
+        if expected:
+            expected_section = f"\n**Expected Answer:** {str(expected)[:1000]}\n"
+
         prompt = self._prompt_template.format(
             query=trace.query,
             response=str(trace.response)[:3000],
+            expected_section=expected_section,
             steps_summary=steps_summary,
         )
 
         try:
+            structured_llm = llm.with_structured_output(JudgeOutput)
+            result = structured_llm.invoke(prompt)
+            scores = {
+                "overall_score": result.overall_score,
+                "correctness": result.correctness,
+                "completeness": result.completeness,
+                "relevance": result.relevance,
+                "coherence": result.coherence,
+                "reasoning": result.reasoning,
+            }
+        except Exception:
+            # Fallback: text-based parsing
             result = llm.invoke(prompt)
             content = result.content if hasattr(result, "content") else str(result)
             scores = self._parse_response(content)
-        except Exception as e:
-            raise EvaluatorError(f"LLM Judge evaluation failed: {e}") from e
 
         return EvalResult(
             evaluator_name=self.name,
@@ -131,30 +137,9 @@ class LLMJudgeEvaluator(BaseEvaluator):
 
     def _parse_response(self, content: str) -> dict[str, Any]:
         """Parse the LLM judge's JSON response."""
-        # Try direct JSON parse
-        try:
-            return dict(json.loads(content))
-        except json.JSONDecodeError:
-            pass
-
-        # Try extracting JSON from markdown code blocks
-        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
-        if json_match:
-            try:
-                return dict(json.loads(json_match.group(1)))
-            except json.JSONDecodeError:
-                pass
-
-        # Try finding JSON object in text
-        json_match = re.search(r"\{[^{}]*\}", content, re.DOTALL)
-        if json_match:
-            try:
-                return dict(json.loads(json_match.group()))
-            except json.JSONDecodeError:
-                pass
-
-        # Fallback
-        return {
+        from retune.utils.json_extract import extract_json_or_default
+        result = extract_json_or_default(content, {
             "overall_score": 0.5,
             "reasoning": f"Could not parse LLM judge response: {content[:200]}",
-        }
+        })
+        return result

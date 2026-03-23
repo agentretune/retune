@@ -9,7 +9,7 @@ from uuid import uuid4
 from retune.adapters.base import BaseAdapter
 from retune.core.enums import StepType
 from retune.core.exceptions import AdapterError
-from retune.core.models import ExecutionTrace, OptimizationConfig, Step
+from retune.core.models import ExecutionTrace, OptimizationConfig, Step, TokenUsage
 
 try:
     from langgraph.graph.state import CompiledStateGraph  # noqa: F401
@@ -56,6 +56,7 @@ class LangGraphAdapter(BaseAdapter):
         super().__init__(agent=agent, **kwargs)
         self._input_key = input_key
         self._config = OptimizationConfig()
+        self._system_prompt: str | None = None
 
     def run(
         self,
@@ -70,6 +71,10 @@ class LangGraphAdapter(BaseAdapter):
         started_at = datetime.now(timezone.utc)
         final_output: Any = None
 
+        # Token tracking via callbacks
+        from retune.adapters._callback import TokenTrackingHandler
+        token_tracker = TokenTrackingHandler()
+
         try:
             # Prepare input — LangGraph expects a dict matching the state schema
             graph_input = kwargs.pop("graph_input", None)
@@ -82,8 +87,12 @@ class LangGraphAdapter(BaseAdapter):
                 except ImportError:
                     graph_input = {self._input_key: query}
 
+            if self._system_prompt:
+                graph_input["system_message"] = self._system_prompt
+
             # Stream to capture per-node outputs
-            for node_output in self.agent.stream(graph_input, **kwargs):
+            stream_config = {"callbacks": [token_tracker]}
+            for node_output in self.agent.stream(graph_input, config=stream_config, **kwargs):
                 step_started = datetime.now(timezone.utc)
 
                 for node_name, output in node_output.items():
@@ -113,6 +122,10 @@ class LangGraphAdapter(BaseAdapter):
 
         except Exception as e:
             raise AdapterError(f"LangGraph execution failed: {e}") from e
+
+        # Attach token usage to steps
+        if token_tracker.llm_calls:
+            self._attach_tokens(steps, token_tracker)
 
         ended_at = datetime.now(timezone.utc)
 
@@ -147,11 +160,76 @@ class LangGraphAdapter(BaseAdapter):
             return str(output)
         return str(output)
 
+    def _attach_tokens(
+        self, steps: list[Step], tracker: Any
+    ) -> None:
+        """Attach token usage from callback tracker to steps."""
+        # Simple: distribute LLM calls across LLM-type steps
+        llm_steps = [
+            s for s in steps if s.step_type.value in ("llm_call", "custom")
+        ]
+        calls = tracker.llm_calls
+
+        if len(llm_steps) == 1 and calls:
+            # Single agent step: aggregate all LLM calls
+            total = TokenUsage(
+                prompt_tokens=sum(
+                    c["token_usage"].prompt_tokens
+                    for c in calls
+                    if c["token_usage"]
+                ),
+                completion_tokens=sum(
+                    c["token_usage"].completion_tokens
+                    for c in calls
+                    if c["token_usage"]
+                ),
+                total_tokens=sum(
+                    c["token_usage"].total_tokens
+                    for c in calls
+                    if c["token_usage"]
+                ),
+            )
+            llm_steps[0].token_usage = total
+            llm_steps[0].cost_usd = tracker.total_cost
+        elif len(llm_steps) == len(calls):
+            # 1:1 mapping
+            for step, call in zip(llm_steps, calls):
+                if call.get("token_usage"):
+                    step.token_usage = call["token_usage"]
+                    step.cost_usd = call.get("cost_usd", 0)
+        elif calls:
+            # Best effort: assign total to first step
+            total = TokenUsage(
+                prompt_tokens=sum(
+                    c["token_usage"].prompt_tokens
+                    for c in calls
+                    if c["token_usage"]
+                ),
+                completion_tokens=sum(
+                    c["token_usage"].completion_tokens
+                    for c in calls
+                    if c["token_usage"]
+                ),
+                total_tokens=sum(
+                    c["token_usage"].total_tokens
+                    for c in calls
+                    if c["token_usage"]
+                ),
+            )
+            if steps:
+                steps[0].token_usage = total
+                steps[0].cost_usd = tracker.total_cost
+
+    def set_system_prompt(self, prompt: str) -> None:
+        self._system_prompt = prompt
+
     def get_config(self) -> OptimizationConfig:
         return self._config.model_copy()
 
     def apply_config(self, config: OptimizationConfig) -> None:
         flat = config.to_flat_dict()
+        if "system_prompt" in flat:
+            self.set_system_prompt(flat["system_prompt"])
         for key, value in flat.items():
             if hasattr(self._config, key):
                 setattr(self._config, key, value)

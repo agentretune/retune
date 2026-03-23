@@ -146,6 +146,7 @@ class Retuner:
         use_deep_optimizer: bool = False,
         eval_llm_model: str = "gpt-4o-mini",
         llm: Any | None = None,
+        api_key: str | None = None,
     ) -> None:
         # Resolve adapter
         if isinstance(adapter, str):
@@ -188,8 +189,19 @@ class Retuner:
                 beam_config=beam_config,
             )
 
-        # Storage
-        self._storage = storage or SQLiteStorage(settings.storage_path)
+        # Storage: cloud-synced if API key provided, local-only otherwise
+        if storage is not None:
+            self._storage = storage
+        elif api_key or settings.api_key:
+            key = api_key or settings.api_key
+            from retune.cloud.storage import CloudStorage
+            self._storage = CloudStorage(
+                api_key=key,  # type: ignore[arg-type]
+                base_url=settings.cloud_base_url,
+                db_path=settings.storage_path,
+            )
+        else:
+            self._storage = SQLiteStorage(settings.storage_path)
 
         # Memory
         self._memory = MemoryStore()
@@ -224,6 +236,8 @@ class Retuner:
         Returns:
             WrapperResponse containing output, trace, eval results, and suggestions
         """
+        expected_answer = kwargs.pop("_expected_answer", None)
+
         # --- Mode: OFF ---
         if self._mode == Mode.OFF:
             trace = self._adapter.run(query, config=self._config, **kwargs)
@@ -231,6 +245,9 @@ class Retuner:
 
         # --- Mode: OBSERVE / EVALUATE / IMPROVE ---
         trace = self._adapter.run(query, config=self._config, **kwargs)
+
+        if expected_answer is not None:
+            trace.metadata["expected_answer"] = expected_answer
         trace.session_id = self._session_id
         trace.mode = self._mode
         trace.config_snapshot = self._config.to_flat_dict()
@@ -321,6 +338,8 @@ class Retuner:
         if hasattr(self._config, suggestion.param_name):
             old = getattr(self._config, suggestion.param_name)
             setattr(self._config, suggestion.param_name, suggestion.new_value)
+            if suggestion.param_name == "system_prompt":
+                self._adapter.set_system_prompt(suggestion.new_value)
             suggestion.status = SuggestionStatus.ACCEPTED
             logger.info(
                 f"Applied suggestion: {suggestion.param_name} "
@@ -346,6 +365,16 @@ class Retuner:
             self._storage.save_config(
                 f"v{self._version}_{self._session_id[:8]}", self._config
             )
+            if hasattr(self._storage, 'send_suggestion_event'):
+                self._storage.send_suggestion_event({
+                    "action": "accept",
+                    "session_id": self._session_id,
+                    "suggestion_id": suggestion.suggestion_id,
+                    "param_name": suggestion.param_name,
+                    "old_value": old,
+                    "new_value": suggestion.new_value,
+                    "confidence": suggestion.confidence,
+                })
             return True
         else:
             logger.warning(
@@ -425,6 +454,13 @@ class Retuner:
             f"Rejected suggestion: {suggestion.param_name} "
             f"({suggestion.old_value} -> {suggestion.new_value})"
         )
+        if hasattr(self._storage, 'send_suggestion_event'):
+            self._storage.send_suggestion_event({
+                "action": "reject",
+                "session_id": self._session_id,
+                "suggestion_id": suggestion.suggestion_id,
+                "param_name": suggestion.param_name,
+            })
         return True
 
     def accept_all(self) -> int:
@@ -588,6 +624,40 @@ class Retuner:
     def session_id(self) -> str:
         return self._session_id
 
+    def compare_configs(
+        self,
+        query: str,
+        config_a: OptimizationConfig | None = None,
+        config_b: OptimizationConfig | None = None,
+    ) -> dict[str, Any]:
+        """A/B test: run query with two configs and compare via pairwise judge.
+
+        Args:
+            query: The test query
+            config_a: First config (default: current config)
+            config_b: Second config to compare against
+        """
+        config_a = config_a or self._config
+        if config_b is None:
+            config_b = self._original_config
+
+        trace_a = self._adapter.run(query, config=config_a)
+        trace_b = self._adapter.run(query, config=config_b)
+
+        from retune.evaluators.pairwise_judge import PairwiseJudgeEvaluator
+        judge = PairwiseJudgeEvaluator()
+        result = judge.compare(trace_a, trace_b)
+
+        return {
+            "query": query,
+            "response_a": str(trace_a.response)[:500],
+            "response_b": str(trace_b.response)[:500],
+            "winner": result.details.get("winner", "tie"),
+            "score": result.score,
+            "reasoning": result.reasoning,
+            "details": result.details,
+        }
+
     def run_evaluation_dataset(
         self,
         dataset: list[dict[str, str]],
@@ -608,7 +678,8 @@ class Retuner:
         results = []
         for item in dataset:
             query = item[query_key]
-            response = self.run(query)
+            expected = item.get("expected")
+            response = self.run(query, _expected_answer=expected)
             results.append(
                 {
                     "query": query,

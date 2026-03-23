@@ -46,23 +46,39 @@ class RetrievalEvaluator(BaseEvaluator):
 
         # Check if response references retrieved content
         response_str = str(trace.response).lower()
+
+        from retune.utils.text_similarity import text_overlap_score
+
         docs_referenced = False
+        best_overlap = 0.0
         for step in retrieval_steps:
             docs = step.output_data.get("documents", [])
             for doc in docs:
                 content = doc.get("content", "").lower()
-                if content and any(
-                    word in response_str for word in content.split()[:10] if len(word) > 4
-                ):
-                    docs_referenced = True
-                    break
+                if content:
+                    overlap = text_overlap_score(content, response_str)
+                    best_overlap = max(best_overlap, overlap)
+                    if overlap > 0.1:
+                        docs_referenced = True
+
+        # Reference-based scoring boost
+        expected = trace.metadata.get("expected_answer")
+        expected_overlap = 0.0
+        if expected:
+            expected_overlap = text_overlap_score(
+                str(trace.response).lower(), expected.lower()
+            )
 
         # Composite score
         score = 0.5 * retrieval_success_rate
         if docs_referenced:
             score += 0.5
         elif retrieval_success_rate > 0:
-            score += 0.2  # Retrieved but unclear if used
+            score += 0.2
+
+        # If expected answer is provided, blend with reference score
+        if expected and expected_overlap > 0:
+            score = 0.6 * score + 0.4 * min(expected_overlap * 2, 1.0)
 
         return EvalResult(
             evaluator_name=self.name,
@@ -78,5 +94,7 @@ class RetrievalEvaluator(BaseEvaluator):
                 "retrieval_steps": len(retrieval_steps),
                 "success_rate": retrieval_success_rate,
                 "docs_referenced": docs_referenced,
+                "best_overlap": best_overlap,
+                "expected_overlap": expected_overlap,
             },
         )

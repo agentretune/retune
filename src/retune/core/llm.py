@@ -113,7 +113,7 @@ def create_llm(
     if provider == "anthropic":
         try:
             from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(model=model, temperature=temperature, **kwargs)
+            return ChatAnthropic(model=model, temperature=temperature, **kwargs)  # type: ignore[call-arg]
         except ImportError:
             raise ImportError(
                 f"langchain-anthropic is required for model '{model}'. "

@@ -208,6 +208,8 @@ class BeamSearchResult(BaseModel):
     total_cost_usd: float = 0.0
     beam_history: list[BeamCandidate] = Field(default_factory=list)
     verified: bool = False
+    statistically_significant: bool = False
+    p_value: float | None = None
 
 
 class WrapperResponse(BaseModel):

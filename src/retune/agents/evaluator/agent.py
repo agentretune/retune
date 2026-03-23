@@ -120,17 +120,18 @@ def tool_auditor_node(state: dict) -> dict:
         "tool_details": [],
     }
 
+    from retune.utils.text_similarity import text_overlap_score
+
     for step in tool_steps:
         tool_output = str(step.get("output_data", {}).get("output", ""))
-        output_words = [w for w in tool_output.lower().split() if len(w) > 4][:10]
-        words_in_response = sum(1 for w in output_words if w in response.lower())
-        output_used = words_in_response > 0
+        overlap = text_overlap_score(tool_output, response)
+        output_used = overlap > 0.1
 
         audit["tool_details"].append({  # type: ignore[attr-defined]
             "name": step.get("name"),
             "output_used_in_response": output_used,
             "output_preview": tool_output[:200],
-            "words_matched": words_in_response,
+            "overlap_score": round(overlap, 3),
         })
 
     if not tool_steps:
@@ -139,9 +140,13 @@ def tool_auditor_node(state: dict) -> dict:
     else:
         tool_details = list(audit["tool_details"])  # type: ignore[call-overload]
         used_count = sum(1 for d in tool_details if d["output_used_in_response"])
-        efficiency = used_count / len(tool_steps) if tool_steps else 1.0
+        avg_overlap = (
+            sum(d.get("overlap_score", 0) for d in tool_details)
+            / len(tool_details) if tool_details else 0
+        )
         call_penalty = max(0, (len(tool_steps) - 2) * 0.1)
-        audit["score"] = round(max(0, min(1, efficiency - call_penalty)), 2)
+        raw = avg_overlap + 0.3 * (used_count / len(tool_steps)) - call_penalty
+        audit["score"] = round(max(0, min(1, raw)), 2)
         audit["reasoning"] = (
             f"{used_count}/{len(tool_steps)} tool outputs used in response. "
             f"{'Efficient' if len(tool_steps) <= 2 else 'Too many tool calls'}."
@@ -188,36 +193,61 @@ def hallucination_detector_node(state: dict) -> dict:
             f"RESPONSE:\n{response[:2000]}\n\n"
             "List each factual claim in the response. For each claim, state whether it is "
             "'grounded' (supported by source material) or 'ungrounded' (not in sources).\n"
-            "Respond in JSON: {\"claims\": [{\"claim\": \"...\", "
-            "\"status\": \"grounded|ungrounded\"}], "
-            "\"hallucination_score\": 0.0-1.0 where "
-            "0=no hallucinations, 1=fully hallucinated}"
+            "Analyze each claim and determine if it is grounded or ungrounded."
         )
-        result = llm.invoke(prompt)
-        content = result.content if hasattr(result, "content") else str(result)
 
-        import re
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            check["hallucination_score"] = parsed.get("hallucination_score", 0.5)
-            claims = parsed.get("claims", [])
-            check["grounded_claims"] = sum(1 for c in claims if c.get("status") == "grounded")
-            check["ungrounded_claims"] = sum(1 for c in claims if c.get("status") == "ungrounded")
-            check["details"] = claims[:10]
-        else:
-            check["hallucination_score"] = 0.5
-            check["raw_response"] = content[:500]
+        from retune.core.schemas import HallucinationResult
+
+        try:
+            structured_llm = llm.with_structured_output(HallucinationResult)
+            hal_result = structured_llm.invoke(prompt)
+            check["hallucination_score"] = hal_result.hallucination_score
+            check["grounded_claims"] = sum(
+                1 for c in hal_result.claims if c.status == "grounded"
+            )
+            check["ungrounded_claims"] = sum(
+                1 for c in hal_result.claims if c.status == "ungrounded"
+            )
+            check["details"] = [c.model_dump() for c in hal_result.claims[:10]]
+        except Exception:
+            # Fallback to text parsing
+            result = llm.invoke(prompt)
+            content = result.content if hasattr(result, "content") else str(result)
+            from retune.utils.json_extract import extract_json
+            parsed = extract_json(content)
+            if parsed and isinstance(parsed, dict):
+                check["hallucination_score"] = parsed.get("hallucination_score", 0.5)
+                claims = parsed.get("claims", [])
+                check["grounded_claims"] = sum(1 for c in claims if c.get("status") == "grounded")
+                check["ungrounded_claims"] = sum(
+                    1 for c in claims if c.get("status") == "ungrounded"
+                )
+                check["details"] = claims[:10]
+            else:
+                check["hallucination_score"] = 0.5
 
     except Exception as e:
         logger.warning(f"Hallucination detection failed: {e}")
-        hallucination_markers = [
-            "blockchain", "quantum", "cryptocurrency", "300%",
-            "fastest growing", "recent studies show",
-        ]
-        found = [m for m in hallucination_markers if m in response.lower()]
-        check["hallucination_score"] = min(len(found) * 0.3, 1.0)
-        check["ungrounded_claims"] = len(found)
+        # Heuristic: measure how much of the response is grounded in sources
+        if source_text.strip():
+            import re as _re
+
+            from retune.utils.text_similarity import text_overlap_score
+            sentences = [s.strip() for s in _re.split(r'[.!?]+', response) if len(s.strip()) > 20]
+            if sentences:
+                grounded = sum(
+                    1 for s in sentences
+                    if text_overlap_score(s.lower(), source_text) > 0.15
+                )
+                grounding_ratio = grounded / len(sentences)
+                check["hallucination_score"] = round(1.0 - grounding_ratio, 2)
+                check["grounded_claims"] = grounded
+                check["ungrounded_claims"] = len(sentences) - grounded
+            else:
+                check["hallucination_score"] = 0.3
+        else:
+            # No source material -- longer responses more likely hallucinated
+            check["hallucination_score"] = 0.7 if len(response) > 100 else 0.3
         check["fallback"] = True
 
     score = round(1.0 - float(check.get("hallucination_score", 0.5)), 2)  # type: ignore[arg-type]
@@ -278,60 +308,73 @@ def synthesizer_node(state: dict) -> dict:
         scores["grounding"] = hallucination_check.get("score", 0.5)
         reasoning_parts.append(f"Grounding: {hallucination_check.get('reasoning', 'N/A')}")
 
+    llm = _get_llm(model)
+
+    analysis_text = json.dumps({
+        "query": trace.get("query", ""),
+        "response_preview": str(trace.get("response", ""))[:500],
+        "expected_answer": trace.get("metadata", {}).get("expected_answer"),
+        "trace_analysis": trace_analysis,
+        "credit_assignment_summary": credit_assignment.get("summary", ""),
+        "tool_audit": tool_audit,
+        "hallucination_check": {
+            "score": hallucination_check.get("score"),
+            "reasoning": hallucination_check.get("reasoning"),
+        } if hallucination_check else None,
+        "dimension_scores": scores,
+    }, default=str, indent=2)
+
+    prompt = (
+        "You are an expert AI system evaluator. Based on the following analysis, "
+        "provide a final evaluation score and reasoning.\n\n"
+        f"ANALYSIS:\n{analysis_text[:4000]}\n\n"
+        "Provide your overall assessment."
+    )
+
+    from retune.core.schemas import SynthesisResult
+
     try:
-        llm = _get_llm(model)
-
-        analysis_text = json.dumps({
-            "query": trace.get("query", ""),
-            "response_preview": str(trace.get("response", ""))[:500],
-            "trace_analysis": trace_analysis,
-            "credit_assignment_summary": credit_assignment.get("summary", ""),
-            "tool_audit": tool_audit,
-            "hallucination_check": {
-                "score": hallucination_check.get("score"),
-                "reasoning": hallucination_check.get("reasoning"),
-            } if hallucination_check else None,
-            "dimension_scores": scores,
-        }, default=str, indent=2)
-
-        prompt = (
-            "You are an expert AI system evaluator. Based on the following analysis, "
-            "provide a final evaluation score and reasoning.\n\n"
-            f"ANALYSIS:\n{analysis_text[:4000]}\n\n"
-            "Respond in JSON:\n"
-            '{"overall_score": <float 0.0-1.0>, "correctness": <float>, '
-            '"completeness": <float>, "relevance": <float>, '
-            '"tool_efficiency": <float>, "reasoning": "<brief explanation>"}'
-        )
-
-        result = llm.invoke(prompt)
-        content = result.content if hasattr(result, "content") else str(result)
-
-        import re
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            final_score = parsed.get("overall_score", 0.5)
-            details = {
-                "correctness": parsed.get("correctness", final_score),
-                "completeness": parsed.get("completeness", final_score),
-                "relevance": parsed.get("relevance", final_score),
-                "tool_efficiency": parsed.get("tool_efficiency", scores.get("tool_usage", 1.0)),
-                "grounding": scores.get("grounding", 1.0),
-                "bottlenecks": credit_assignment.get("bottlenecks", []),
-            }
-            reasoning = parsed.get("reasoning", "; ".join(reasoning_parts))
-        else:
-            raise ValueError("Could not parse LLM response")
-
+        structured_llm = llm.with_structured_output(SynthesisResult)
+        synthesis = structured_llm.invoke(prompt)
+        final_score = synthesis.overall_score
+        details = {
+            "correctness": synthesis.correctness,
+            "completeness": synthesis.completeness,
+            "relevance": synthesis.relevance,
+            "tool_efficiency": synthesis.tool_efficiency,
+            "grounding": scores.get("grounding", 1.0),
+            "bottlenecks": credit_assignment.get("bottlenecks", []),
+        }
+        reasoning = synthesis.reasoning
     except Exception as e:
-        logger.warning(f"LLM synthesis failed, using heuristic: {e}")
-        if scores:
-            final_score = round(sum(scores.values()) / len(scores), 2)
-        else:
-            final_score = 0.5
-        details = {**scores}
-        reasoning = "; ".join(reasoning_parts) or "Heuristic evaluation"
+        logger.warning(f"Structured synthesis failed, trying text: {e}")
+        # Fallback to text parsing
+        try:
+            result = llm.invoke(prompt)
+            content = result.content if hasattr(result, "content") else str(result)
+            from retune.utils.json_extract import extract_json
+            parsed = extract_json(content)
+            if parsed and isinstance(parsed, dict):
+                final_score = parsed.get("overall_score", 0.5)
+                details = {
+                    "correctness": parsed.get("correctness", final_score),
+                    "completeness": parsed.get("completeness", final_score),
+                    "relevance": parsed.get("relevance", final_score),
+                    "tool_efficiency": parsed.get("tool_efficiency", scores.get("tool_usage", 1.0)),
+                    "grounding": scores.get("grounding", 1.0),
+                    "bottlenecks": credit_assignment.get("bottlenecks", []),
+                }
+                reasoning = parsed.get("reasoning", "; ".join(reasoning_parts))
+            else:
+                raise ValueError("Could not parse")
+        except Exception:
+            # Pure heuristic fallback
+            if scores:
+                final_score = round(sum(scores.values()) / len(scores), 2)
+            else:
+                final_score = 0.5
+            details = {**scores}
+            reasoning = "; ".join(reasoning_parts) or "Heuristic evaluation"
 
     return {
         "final_eval": {
@@ -517,13 +560,13 @@ class EvaluatorDeepAgent(BaseEvaluator):
         )
 
         # Try to parse JSON from the response
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
+        from retune.utils.json_extract import extract_json
+        parsed = extract_json(content)
+        if parsed and isinstance(parsed, dict):
             try:
-                parsed = json.loads(json_match.group())
                 return EvalResult(
                     evaluator_name=self.name,
-                    score=float(parsed.get("overall_score", parsed.get("score", 0.5))),
+                    score=float(parsed.get("overall_score", parsed.get("score", 0.5)) or 0.5),
                     reasoning=parsed.get("reasoning", content[:500]),
                     details={
                         k: v for k, v in parsed.items()

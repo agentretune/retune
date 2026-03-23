@@ -7,6 +7,9 @@ build/
 .eggs/
 *.egg
 .env
+.env.production
+.env.staging
+.env.local
 .venv/
 venv/
 env/
@@ -24,3 +27,15 @@ dashboard/dist/
 .claude/
 .DS_Store
 Thumbs.db
+
+# === SaaS / Private (do NOT push to public repo) ===
+retune-cloud/
+server/
+dashboard/
+landing/
+deploy/
+Dockerfile
+docker-compose.yml
+fly.toml
+.env.production
+MANUAL_STEPS.md

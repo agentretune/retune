@@ -57,12 +57,15 @@ agents = [
     "langchain-core>=0.2",
     "langchain-openai>=0.1",
 ]
+embeddings = [
+    "sentence-transformers>=2.0",
+]
 server = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
 all = [
-    "retune[langchain,langgraph,llm,anthropic,google,agents,server]",
+    "retune[langchain,langgraph,llm,anthropic,google,agents,server,embeddings]",
 ]
 dev = [
     "pytest>=8.0",
@@ -76,6 +79,9 @@ Homepage = "https://agentretune.com"
 Repository = "https://github.com/agentretune/retune"
 Documentation = "https://agentretune.com/docs"
 Changelog = "https://github.com/agentretune/retune/blob/main/CHANGELOG.md"
+
+[project.scripts]
+retune = "retune.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/retune"]

@@ -97,11 +97,25 @@ class BeamSearchAPO:
 
         all_candidates: list[BeamCandidate] = list(beam)
 
+        # Track per-query scores for statistical significance testing
+        baseline_per_query_scores: list[float] = []
+        best_candidate_per_query_scores: list[float] = []
+        candidate_scores_map: dict[str, list[float]] = {}  # prompt -> per-query scores
+
         # Configure rollout runner
         if adapter is not None:
             self._rollout_runner.set_adapter(adapter)
         if evaluators:
             self._rollout_runner.set_evaluators(evaluators)
+
+        # Run baseline rollout if possible, to get per-query scores
+        if adapter is not None and validation_queries and evaluators:
+            baseline_rollout_score, baseline_per_query_scores = self._verify(
+                current_prompt, validation_queries, current_config
+            )
+            if baseline_per_query_scores:
+                baseline_score = baseline_rollout_score
+                beam[0].score = baseline_score
 
         for round_num in range(1, cfg.beam_rounds + 1):
             if self._cost_spent >= cfg.cost_budget_usd:
@@ -143,12 +157,13 @@ class BeamSearchAPO:
 
                     # Step 3: Verify via rollout (if enabled and adapter available)
                     if cfg.verification_enabled and adapter is not None and validation_queries:
-                        rollout_score = self._verify(
+                        rollout_score, per_query_scores = self._verify(
                             new_prompt, validation_queries, current_config
                         )
                         new_candidate.score = rollout_score
                         new_candidate.verified = True
                         new_candidate.verification_score = rollout_score
+                        candidate_scores_map[new_prompt] = per_query_scores
                     else:
                         # Estimate score from confidence
                         new_candidate.score = (
@@ -173,6 +188,24 @@ class BeamSearchAPO:
 
         improvement = best.score - baseline_score
 
+        # Resolve per-query scores for the best candidate
+        best_candidate_per_query_scores = candidate_scores_map.get(
+            best.prompt, []
+        )
+
+        # Statistical significance test
+        sig_result: dict[str, Any] = {"significant": False}
+        if (
+            baseline_per_query_scores
+            and best_candidate_per_query_scores
+            and len(baseline_per_query_scores) >= 3
+        ):
+            from retune.utils.stats import is_significant_improvement
+
+            sig_result = is_significant_improvement(
+                baseline_per_query_scores, best_candidate_per_query_scores
+            )
+
         return BeamSearchResult(
             best_prompt=best.prompt,
             best_score=best.score,
@@ -183,6 +216,8 @@ class BeamSearchAPO:
             total_cost_usd=self._cost_spent,
             beam_history=all_candidates,
             verified=best.verified,
+            statistically_significant=sig_result.get("significant", False),
+            p_value=sig_result.get("p_value"),
         )
 
     def _estimate_baseline_score(self, failure_traces: list[dict[str, Any]]) -> float:
@@ -302,8 +337,12 @@ class BeamSearchAPO:
         prompt: str,
         validation_queries: list[str],
         current_config: OptimizationConfig | None,
-    ) -> float:
-        """Verify a candidate prompt via rollout."""
+    ) -> tuple[float, list[float]]:
+        """Verify a candidate prompt via rollout.
+
+        Returns:
+            Tuple of (average_score, per_query_scores).
+        """
         config_dict = {}
         if current_config:
             config_dict = current_config.to_flat_dict()
@@ -316,4 +355,5 @@ class BeamSearchAPO:
         )
 
         self._cost_spent += result.get("total_cost", 0.0)
-        return float(result.get("avg_score", 0.0))
+        per_query = [r["score"] for r in result.get("per_query_scores", [])]
+        return float(result.get("avg_score", 0.0)), per_query

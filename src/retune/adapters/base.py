@@ -50,6 +50,10 @@ class BaseAdapter(ABC):
         Only non-None fields in the config are applied.
         """
 
+    def set_system_prompt(self, prompt: str) -> None:
+        """Apply a system prompt to the wrapped agent. Override in subclasses."""
+        pass
+
     def get_agent(self) -> Any:
         """Return the underlying agent object."""
         return self.agent

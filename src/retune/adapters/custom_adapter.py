@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
@@ -36,6 +37,8 @@ class CustomAdapter(BaseAdapter):
         super().__init__(agent=agent, **kwargs)
         self._trace_fn = trace_fn
         self._config = OptimizationConfig()
+        self._system_prompt: str | None = None
+        self._agent_accepts_system_prompt: bool | None = None
 
     def run(
         self,
@@ -48,6 +51,16 @@ class CustomAdapter(BaseAdapter):
 
         started_at = datetime.now(timezone.utc)
         steps: list[Step] = []
+
+        if self._system_prompt and self._system_prompt not in kwargs.values():
+            if self._agent_accepts_system_prompt is None:
+                try:
+                    sig = inspect.signature(self.agent)
+                    self._agent_accepts_system_prompt = "system_prompt" in sig.parameters
+                except (ValueError, TypeError):
+                    self._agent_accepts_system_prompt = False
+            if self._agent_accepts_system_prompt:
+                kwargs["system_prompt"] = self._system_prompt
 
         try:
             result = self.agent(query, **kwargs)
@@ -88,11 +101,16 @@ class CustomAdapter(BaseAdapter):
             ended_at=ended_at,
         )
 
+    def set_system_prompt(self, prompt: str) -> None:
+        self._system_prompt = prompt
+
     def get_config(self) -> OptimizationConfig:
         return self._config.model_copy()
 
     def apply_config(self, config: OptimizationConfig) -> None:
         flat = config.to_flat_dict()
+        if "system_prompt" in flat:
+            self.set_system_prompt(flat["system_prompt"])
         for key, value in flat.items():
             if hasattr(self._config, key):
                 setattr(self._config, key, value)

@@ -74,6 +74,16 @@ class _TracingCallbackHandler(BaseCallbackHandler):
                 total_tokens=usage.get("total_tokens", 0),
             )
 
+        cost_usd = None
+        if token_usage:
+            model_name = (response.llm_output or {}).get("model_name", "")
+            from retune.utils.cost_tracker import estimate_cost
+            cost_usd = estimate_cost(
+                model_name,
+                token_usage.prompt_tokens,
+                token_usage.completion_tokens,
+            )
+
         self.steps.append(
             Step(
                 step_type=pending["type"],
@@ -84,6 +94,7 @@ class _TracingCallbackHandler(BaseCallbackHandler):
                 started_at=pending["started_at"],
                 ended_at=datetime.now(timezone.utc),
                 token_usage=token_usage,
+                cost_usd=cost_usd,
             )
         )
 
@@ -208,6 +219,7 @@ class LangChainAdapter(BaseAdapter):
             )
         super().__init__(agent=agent, **kwargs)
         self._config = OptimizationConfig()
+        self._system_prompt: str | None = None
 
     def run(
         self,
@@ -267,6 +279,9 @@ class LangChainAdapter(BaseAdapter):
     def get_config(self) -> OptimizationConfig:
         return self._config.model_copy()
 
+    def set_system_prompt(self, prompt: str) -> None:
+        self._system_prompt = prompt
+
     def apply_config(self, config: OptimizationConfig) -> None:
         """Apply config to the wrapped chain.
 
@@ -278,6 +293,7 @@ class LangChainAdapter(BaseAdapter):
             self.agent.temperature = flat["temperature"]
 
         if "system_prompt" in flat:
+            self.set_system_prompt(flat["system_prompt"])
             # Store for potential prompt modification
             self._config.system_prompt = flat["system_prompt"]
 

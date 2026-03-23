@@ -73,25 +73,32 @@ def planner_node(state: dict) -> dict:
 
     avg_scores = {k: sum(v) / len(v) for k, v in score_lists.items() if v}
 
+    from retune.utils.thresholds import compute_adaptive_threshold
+
+    # Collect all scores for adaptive threshold
+    all_scores = list(avg_scores.values())
+    quality_threshold = compute_adaptive_threshold(all_scores, percentile=50, default=0.8)
+    failure_threshold = compute_adaptive_threshold(all_scores, percentile=25, default=0.7)
+
     strategies = []
 
     quality_indicators = ["correctness", "answer_quality", "grounding", "deep_evaluator"]
     quality_scores = [avg_scores[k] for k in quality_indicators if k in avg_scores]
     avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 1.0
-    if avg_quality < 0.8:
+    if avg_quality < quality_threshold:
         strategies.append(APO)
 
     config_indicators = ["retrieval", "latency", "cost", "tool_usage"]
     config_scores = [avg_scores[k] for k in config_indicators if k in avg_scores]
     avg_config = sum(config_scores) / len(config_scores) if config_scores else 1.0
-    if avg_config < 0.8 or avg_quality < 0.7:
+    if avg_config < quality_threshold or avg_quality < failure_threshold:
         strategies.append(CONFIG_TUNER)
 
     tool_score = avg_scores.get("tool_usage", avg_scores.get("tool_efficiency", 1.0))
-    if tool_score < 0.7:
+    if tool_score < failure_threshold:
         strategies.append(TOOL_CURATOR)
 
-    if not strategies and avg_quality < 0.9:
+    if not strategies and avg_quality < min(quality_threshold + 0.1, 0.95):
         strategies.append(CONFIG_TUNER)
 
     return {
@@ -123,7 +130,16 @@ def apo_evaluate_node(state: dict) -> dict:
         eval_results = trace.get("eval_results", [])
         scores = [r.get("score", 0.5) for r in eval_results]
         avg = sum(scores) / len(scores) if scores else 0.5
-        if avg < 0.7:
+
+        from retune.utils.thresholds import compute_adaptive_threshold
+        # Get all scores from all traces for threshold computation
+        all_trace_scores = []
+        for t in traces:
+            for r in t.get("eval_results", []):
+                all_trace_scores.append(r.get("score", 0.5))
+        failure_threshold = compute_adaptive_threshold(all_trace_scores, percentile=25, default=0.7)
+
+        if avg < failure_threshold:
             failures.append({
                 "query": trace.get("query", ""),
                 "response_preview": str(trace.get("response", ""))[:200],
@@ -195,30 +211,33 @@ def apo_rewrite_node(state: dict) -> dict:
         "3. Include: role definition, step-by-step instructions, constraints, output format\n"
         "4. If the agent uses tools, include specific tool usage guidelines\n"
         "5. If applicable, add a reasoning instruction (think before acting)\n\n"
-        "Respond in JSON:\n"
-        '{"rewritten_prompt": "<the new system prompt>", '
-        '"changes_made": ["<list of specific changes>"], '
-        '"confidence": <float 0.0-1.0 how confident you are this is better>}'
+        "Rewrite the prompt addressing every critique point. Keep it 100-300 words."
     )
 
+    from retune.core.schemas import RewriteResult
+
     try:
-        result = llm.invoke(prompt)
-        content = result.content if hasattr(result, "content") else str(result)
-
-        import re
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            rewritten = parsed.get("rewritten_prompt", "")
-            confidence = parsed.get("confidence", 0.7)
-        else:
-            rewritten = content
-            confidence = 0.5
-
-    except Exception as e:
-        logger.warning(f"APO rewrite failed: {e}")
-        rewritten = ""
-        confidence = 0.0
+        structured_llm = llm.with_structured_output(RewriteResult)
+        rewrite = structured_llm.invoke(prompt)
+        rewritten = rewrite.rewritten_prompt
+        confidence = rewrite.confidence
+    except Exception:
+        # Fallback to text parsing
+        try:
+            result = llm.invoke(prompt)
+            content = result.content if hasattr(result, "content") else str(result)
+            from retune.utils.json_extract import extract_json
+            parsed = extract_json(content)
+            if parsed and isinstance(parsed, dict):
+                rewritten = parsed.get("rewritten_prompt", "")
+                confidence = parsed.get("confidence", 0.7)
+            else:
+                rewritten = content
+                confidence = 0.5
+        except Exception as e:
+            logger.warning(f"APO rewrite failed: {e}")
+            rewritten = ""
+            confidence = 0.0
 
     completed = list(state.get("strategies_completed", []))
     completed.append(APO)
@@ -239,12 +258,17 @@ def config_tuner_node(state: dict) -> dict:
     avg_scores = analysis.get("avg_scores", {})
     suggestions = []
 
+    from retune.utils.thresholds import compute_adaptive_threshold
+    all_score_values = list(avg_scores.values())
+    needs_improvement = compute_adaptive_threshold(all_score_values, percentile=30, default=0.7)
+    critical_threshold = compute_adaptive_threshold(all_score_values, percentile=15, default=0.5)
+
     search_tool = ConfigSearchTool()
 
     # 1. Retrieval quality -> top_k
     retrieval_score = avg_scores.get("retrieval", avg_scores.get(
         "completeness", avg_scores.get("doc_coverage", 1.0)))
-    if retrieval_score < 0.7:
+    if retrieval_score < needs_improvement:
         current_top_k = current_config.get("top_k", 4)
         result = search_tool.execute(
             param_name="top_k",
@@ -266,7 +290,7 @@ def config_tuner_node(state: dict) -> dict:
     grounding = avg_scores.get("grounding", avg_scores.get(
         "correctness", avg_scores.get("deep_evaluator", 1.0)))
     current_temp = current_config.get("temperature")
-    if grounding < 0.7 and current_temp is not None and current_temp > 0.3:
+    if grounding < needs_improvement and current_temp is not None and current_temp > 0.3:
         result = search_tool.execute(
             param_name="temperature",
             current_value=current_temp,
@@ -285,7 +309,7 @@ def config_tuner_node(state: dict) -> dict:
 
     # 3. Latency -> reduce max_tokens
     latency_score = avg_scores.get("latency", 1.0)
-    if latency_score < 0.5:
+    if latency_score < critical_threshold:
         current_max = current_config.get("max_tokens", 2048)
         if current_max > 1024:
             suggestions.append({
@@ -303,7 +327,7 @@ def config_tuner_node(state: dict) -> dict:
     # 4. Reasoning strategy
     reasoning_score = avg_scores.get("reasoning", avg_scores.get("reasoning_presence", 1.0))
     current_strategy = current_config.get("reasoning_strategy")
-    if reasoning_score < 0.5 and current_strategy != "cot":
+    if reasoning_score < critical_threshold and current_strategy != "cot":
         suggestions.append({
             "param_name": "reasoning_strategy",
             "old_value": current_strategy or "none",
@@ -317,7 +341,7 @@ def config_tuner_node(state: dict) -> dict:
         })
 
     # 5. Reranker
-    if retrieval_score < 0.7 and not current_config.get("use_reranker"):
+    if retrieval_score < needs_improvement and not current_config.get("use_reranker"):
         suggestions.append({
             "param_name": "use_reranker",
             "old_value": False,
@@ -341,21 +365,33 @@ def config_tuner_node(state: dict) -> dict:
                 f"Average scores: {json.dumps(avg_scores)}\n"
                 f"Already suggested: {[s['param_name'] for s in suggestions]}\n\n"
                 "Are there any ADDITIONAL config changes needed that weren't already suggested? "
-                "Respond in JSON: {\"additional_suggestions\": [{\"param_name\": \"...\", "
-                "\"new_value\": ..., \"reasoning\": \"...\", \"confidence\": 0.0-1.0}]}"
+                "Suggest additional config changes not already covered."
             )
-            result = llm.invoke(analysis_prompt)
-            content = result.content if hasattr(result, "content") else str(result)
 
-            import re
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
-            if json_match:
-                parsed = json.loads(json_match.group())
-                for s in parsed.get("additional_suggestions", []):
-                    if s.get("param_name") not in [x["param_name"] for x in suggestions]:
-                        s["old_value"] = current_config.get(s.get("param_name"))
-                        s["category"] = "agent"
-                        suggestions.append(s)
+            from retune.core.models import OptimizationConfig
+            from retune.core.schemas import AdditionalSuggestions
+
+            valid_params = set(OptimizationConfig.model_fields.keys())
+
+            try:
+                structured_llm = llm.with_structured_output(AdditionalSuggestions)
+                additional = structured_llm.invoke(analysis_prompt)
+                for s in additional.additional_suggestions:
+                    param_name = s.param_name
+                    if param_name not in valid_params:
+                        logger.debug(f"Skipping invalid param '{param_name}'")
+                        continue
+                    if param_name not in [x["param_name"] for x in suggestions]:
+                        suggestions.append({
+                            "param_name": param_name,
+                            "old_value": current_config.get(param_name),
+                            "new_value": s.new_value,
+                            "reasoning": s.reasoning,
+                            "confidence": s.confidence,
+                            "category": "agent",
+                        })
+            except Exception as e:
+                logger.debug(f"LLM config analysis skipped: {e}")
         except Exception as e:
             logger.debug(f"LLM config analysis skipped: {e}")
 
@@ -382,10 +418,10 @@ def tool_curator_node(state: dict) -> dict:
                     tool_stats[name] = {"calls": 0, "useful": 0, "wasteful": 0}
                 tool_stats[name]["calls"] += 1
 
-                output = str(step.get("output_data", {}).get("output", "")).lower()
-                response = str(trace.get("response", "")).lower()
-                output_words = [w for w in output.split() if len(w) > 4][:10]
-                used = any(w in response for w in output_words)
+                output = str(step.get("output_data", {}).get("output", ""))
+                response = str(trace.get("response", ""))
+                from retune.utils.text_similarity import text_overlap_score
+                used = text_overlap_score(output, response) > 0.1
                 if used:
                     tool_stats[name]["useful"] += 1
                 else:
@@ -817,8 +853,6 @@ class OptimizerDeepAgent(BaseOptimizer):
         beam_result: dict[str, Any] | None = None,
     ) -> list[Suggestion]:
         """Parse deep agent output into Suggestion objects."""
-        import re
-
         suggestions = []
 
         # Add beam search result as a suggestion if present
@@ -848,10 +882,10 @@ class OptimizerDeepAgent(BaseOptimizer):
         )
 
         # Try to extract JSON suggestions
-        json_match = re.search(r'\[.*\]', content, re.DOTALL)
-        if json_match:
+        from retune.utils.json_extract import extract_json
+        parsed = extract_json(content)
+        if parsed and isinstance(parsed, list):
             try:
-                parsed = json.loads(json_match.group())
                 for s in parsed:
                     if isinstance(s, dict) and "param_name" in s:
                         suggestions.append(Suggestion(
