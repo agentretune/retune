@@ -147,6 +147,13 @@ class Retuner:
         eval_llm_model: str = "gpt-4o-mini",
         llm: Any | None = None,
         api_key: str | None = None,
+        # Auto-evaluation and RL loop
+        auto_eval_every: int = 0,
+        auto_optimize: bool = False,
+        drift_threshold: float = 0.1,
+        max_free_optimizations: int = 15,
+        enable_few_shot: bool = False,
+        enable_routing: bool = False,
     ) -> None:
         # Resolve adapter
         if isinstance(adapter, str):
@@ -203,6 +210,10 @@ class Retuner:
         else:
             self._storage = SQLiteStorage(settings.storage_path)
 
+        # Usage gate (15 free deep operations, unlimited for premium)
+        from retune.usage_gate import UsageGate
+        self._usage_gate = UsageGate(api_key=api_key or settings.api_key)
+
         # Memory
         self._memory = MemoryStore()
 
@@ -217,6 +228,32 @@ class Retuner:
 
         # Validation queries for rollout verification
         self._validation_queries = validation_queries or []
+
+        # Auto-eval controller (the "RL loop")
+        self._auto_eval_controller = None
+        if auto_eval_every > 0 or auto_optimize:
+            from retune.auto_eval import AutoEvalController
+            self._auto_eval_controller = AutoEvalController(
+                eval_every_n_calls=auto_eval_every or 50,
+                optimize_on_drift=auto_optimize,
+                drift_threshold=drift_threshold,
+                max_free_optimizations=max_free_optimizations,
+            )
+            # Premium if API key is set
+            if api_key or settings.api_key:
+                self._auto_eval_controller.set_premium(True)
+
+        # Few-shot optimizer
+        self._few_shot = None
+        if enable_few_shot:
+            from retune.few_shot import FewShotOptimizer
+            self._few_shot = FewShotOptimizer()
+
+        # Strategy router
+        self._router = None
+        if enable_routing:
+            from retune.strategy_router import StrategyRouter
+            self._router = StrategyRouter()
 
         # Version tracking
         self._version = 1
@@ -252,6 +289,14 @@ class Retuner:
         trace.mode = self._mode
         trace.config_snapshot = self._config.to_flat_dict()
 
+        # Few-shot: inject relevant examples into system prompt
+        if self._few_shot and self._few_shot.example_count > 0:
+            examples_text = self._few_shot.build_examples_prompt(query)
+            if examples_text and self._config.system_prompt:
+                # Temporarily augment the system prompt with examples
+                augmented = self._config.system_prompt + examples_text
+                self._adapter.set_system_prompt(augmented)
+
         eval_results: list[EvalResult] = []
         suggestions: list[Suggestion] = []
 
@@ -262,7 +307,15 @@ class Retuner:
 
         # --- Mode: IMPROVE ---
         if self._mode == Mode.IMPROVE:
-            suggestions = self._optimize(trace)
+            if not self._usage_gate.check("optimize"):
+                logger.warning(
+                    "Deep optimization limit reached. "
+                    "Upgrade at https://agentretune.com/pricing"
+                )
+            else:
+                suggestions = self._optimize(trace)
+                if suggestions:
+                    self._usage_gate.record_usage("optimize")
 
             # All suggestions start as PENDING
             for s in suggestions:
@@ -274,6 +327,25 @@ class Retuner:
             # Auto-improve: only if user explicitly opted in
             if self._auto_improve and suggestions:
                 self._auto_apply_suggestions(suggestions)
+
+        # Auto-eval: track this call and check triggers
+        auto_status = None
+        if self._auto_eval_controller:
+            auto_status = self._auto_eval_controller.on_trace(trace, eval_results)
+
+            # Few-shot: store good traces as examples
+            if self._few_shot and eval_results:
+                self._few_shot.add_from_trace(trace)
+
+            # Strategy router: record result
+            if self._router and eval_results:
+                avg = sum(r.score for r in eval_results) / len(eval_results)
+                self._router.record_result(avg)
+
+            # Auto-optimize if triggered
+            if auto_status and auto_status.get("should_optimize"):
+                if self._auto_eval_controller.can_optimize:
+                    self._auto_optimize(trace)
 
         # Store trace
         self._storage.save_trace(trace)
@@ -381,6 +453,40 @@ class Retuner:
                 f"Cannot apply suggestion: config has no field '{suggestion.param_name}'"
             )
             return False
+
+    def _auto_optimize(self, latest_trace: ExecutionTrace) -> None:
+        """Run the automatic optimization cycle."""
+        if not self._auto_eval_controller:
+            return
+        if not self._auto_eval_controller.can_optimize:
+            logger.warning(
+                "Free optimization limit reached. "
+                "Set api_key for unlimited optimizations."
+            )
+            return
+
+        logger.info("Auto-optimization triggered")
+
+        # Get suggestions
+        suggestions = self._optimize(latest_trace)
+        if not suggestions:
+            logger.info("No optimization suggestions generated")
+            return
+
+        # Auto-apply high-confidence suggestions
+        applied = 0
+        for s in suggestions:
+            if s.confidence >= 0.7:
+                if self._apply_single_suggestion(s):
+                    applied += 1
+
+        if applied > 0:
+            self._auto_eval_controller.record_optimization()
+            self._auto_eval_controller.update_baseline()
+            logger.info(
+                f"Auto-optimization applied {applied} suggestions "
+                f"(remaining: {self._auto_eval_controller.optimizations_remaining})"
+            )
 
     # =====================================================================
     # Suggestion Management API -- the user's control panel
@@ -548,6 +654,10 @@ class Retuner:
         })
         logger.info("Reverted all changes to original config")
 
+    def get_usage_status(self) -> dict[str, Any]:
+        """Get deep optimization usage status (free tier limit)."""
+        return self._usage_gate.get_status()
+
     # =====================================================================
     # Public API -- mode, config, traces, summaries
     # =====================================================================
@@ -704,3 +814,34 @@ class Retuner:
                 name: sum(vals) / len(vals) for name, vals in all_scores.items()
             },
         }
+
+    def get_auto_eval_status(self) -> dict[str, Any]:
+        """Get the auto-evaluation and RL loop status."""
+        if not self._auto_eval_controller:
+            return {"enabled": False}
+        return {"enabled": True, **self._auto_eval_controller.get_summary()}
+
+    def get_few_shot_examples(self) -> list[dict[str, Any]]:
+        """Get stored few-shot examples."""
+        if not self._few_shot:
+            return []
+        return self._few_shot.get_all_examples()
+
+    def get_routing_status(self) -> dict[str, Any]:
+        """Get strategy routing status."""
+        if not self._router:
+            return {"enabled": False}
+        return {"enabled": True, **self._router.get_summary()}
+
+    def add_strategy_variant(
+        self,
+        name: str,
+        config: OptimizationConfig | None = None,
+        system_prompt: str | None = None,
+    ) -> None:
+        """Add a strategy variant for routing."""
+        if not self._router:
+            from retune.strategy_router import StrategyRouter
+            self._router = StrategyRouter()
+        config = config or OptimizationConfig()
+        self._router.add_variant(name, config, system_prompt)

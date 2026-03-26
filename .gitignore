@@ -30,6 +30,7 @@ Thumbs.db
 
 # === SaaS / Private (do NOT push to public repo) ===
 retune-cloud/
+retune-frontend/
 server/
 dashboard/
 landing/

@@ -221,6 +221,45 @@ class LangChainAdapter(BaseAdapter):
         self._config = OptimizationConfig()
         self._system_prompt: str | None = None
 
+    def _inject_system_prompt(self, input_data: Any) -> Any:
+        """Try to inject system prompt into the chain input."""
+        if not self._system_prompt:
+            return input_data
+
+        # If input is a dict, add system_prompt key
+        if isinstance(input_data, dict):
+            input_data["system_prompt"] = self._system_prompt
+
+        # Also try to modify the chain's prompt template directly
+        try:
+            if hasattr(self.agent, 'first'):
+                prompt = self.agent.first
+                if hasattr(prompt, 'messages') and prompt.messages:
+                    from langchain_core.prompts import SystemMessagePromptTemplate
+                    # Check if first message is a system template
+                    if isinstance(prompt.messages[0], SystemMessagePromptTemplate):
+                        prompt.messages[0] = SystemMessagePromptTemplate.from_template(
+                            self._system_prompt
+                        )
+        except Exception:
+            pass  # Best effort -- don't break the chain
+
+        return input_data
+
+    def _find_llm(self) -> Any:
+        """Try to find the LLM component in the chain."""
+        # Direct LLM
+        if hasattr(self.agent, 'temperature'):
+            return self.agent
+        # RunnableSequence -- look for LLM in the chain
+        if hasattr(self.agent, 'middle'):
+            for step in self.agent.middle:
+                if hasattr(step, 'temperature'):
+                    return step
+        if hasattr(self.agent, 'last') and hasattr(self.agent.last, 'temperature'):
+            return self.agent.last
+        return None
+
     def run(
         self,
         query: str,
@@ -245,10 +284,12 @@ class LangChainAdapter(BaseAdapter):
 
             # Try invoke with string input first, fall back to dict
             try:
-                result = self.agent.invoke(query, config=invoke_config, **invoke_kwargs)
+                input_data = self._inject_system_prompt(query)
+                result = self.agent.invoke(input_data, config=invoke_config, **invoke_kwargs)
             except (TypeError, ValueError):
+                input_data = self._inject_system_prompt({"input": query})
                 result = self.agent.invoke(
-                    {"input": query}, config=invoke_config, **invoke_kwargs
+                    input_data, config=invoke_config, **invoke_kwargs
                 )
 
         except Exception as e:
@@ -296,6 +337,20 @@ class LangChainAdapter(BaseAdapter):
             self.set_system_prompt(flat["system_prompt"])
             # Store for potential prompt modification
             self._config.system_prompt = flat["system_prompt"]
+
+        # Try to modify the LLM's parameters directly
+        llm = self._find_llm()
+        if llm:
+            if "temperature" in flat and flat["temperature"] is not None:
+                try:
+                    llm.temperature = flat["temperature"]
+                except Exception:
+                    pass
+            if "max_tokens" in flat and flat["max_tokens"] is not None:
+                try:
+                    llm.max_tokens = flat["max_tokens"]
+                except Exception:
+                    pass
 
         # Update internal config state
         for key, value in flat.items():

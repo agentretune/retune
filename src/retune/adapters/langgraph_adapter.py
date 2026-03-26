@@ -88,10 +88,29 @@ class LangGraphAdapter(BaseAdapter):
                     graph_input = {self._input_key: query}
 
             if self._system_prompt:
-                graph_input["system_message"] = self._system_prompt
+                try:
+                    from langchain_core.messages import SystemMessage
+                    msgs = graph_input.get(self._input_key)
+                    if isinstance(msgs, list):
+                        # Prepend system message before the human message
+                        graph_input[self._input_key] = [
+                            SystemMessage(content=self._system_prompt),
+                            *graph_input[self._input_key],
+                        ]
+                except ImportError:
+                    pass
+
+            # Build configurable overrides from optimization config
+            configurable: dict[str, Any] = {}
+            if self._config.temperature is not None:
+                configurable["temperature"] = self._config.temperature
+            if self._config.max_tokens is not None:
+                configurable["max_tokens"] = self._config.max_tokens
 
             # Stream to capture per-node outputs
-            stream_config = {"callbacks": [token_tracker]}
+            stream_config: dict[str, Any] = {"callbacks": [token_tracker]}
+            if configurable:
+                stream_config["configurable"] = configurable
             for node_output in self.agent.stream(graph_input, config=stream_config, **kwargs):
                 step_started = datetime.now(timezone.utc)
 
@@ -233,3 +252,14 @@ class LangGraphAdapter(BaseAdapter):
         for key, value in flat.items():
             if hasattr(self._config, key):
                 setattr(self._config, key, value)
+
+    def get_active_config(self) -> dict[str, Any]:
+        """Get the currently active optimization parameters."""
+        result: dict[str, Any] = {}
+        if self._system_prompt:
+            result["system_prompt"] = self._system_prompt[:100] + "..."
+        if self._config.temperature is not None:
+            result["temperature"] = self._config.temperature
+        if self._config.max_tokens is not None:
+            result["max_tokens"] = self._config.max_tokens
+        return result
