@@ -33,6 +33,7 @@ retune-cloud/
 retune-frontend/
 server/
 dashboard/
+!src/retune/dashboard/
 landing/
 deploy/
 Dockerfile

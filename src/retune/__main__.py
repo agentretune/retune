@@ -61,7 +61,7 @@ def _run_dashboard(args: argparse.Namespace) -> None:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
 
     uvicorn.run(
-        "server.app:app",
+        "retune.dashboard.app:app",
         host=args.host,
         port=args.port,
         reload=False,
