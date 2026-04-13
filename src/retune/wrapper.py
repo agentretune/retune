@@ -987,33 +987,37 @@ class Retuner:
         return OptimizationReport.from_cloud_dict(raw)
 
     def _make_candidate_runner(self):
-        """Return a callable that runs the wrapped agent with config overrides.
-
-        Phase 2: applies `config_overrides` by temporarily mutating
-        self._config (system_prompt, few_shot_examples), running the candidate,
-        then restoring the original config. Adapter implementations read from
-        self._config at call time, so this override propagates correctly.
-        """
+        """Return a callable that runs the wrapped agent with config overrides
+        and returns REAL eval scores from the registered evaluators."""
         def _runner(overrides: dict, queries: list):
-            # Snapshot the fields we're about to override
             snapshot = {}
             for key in ("system_prompt", "few_shot_examples"):
                 if key in overrides:
                     snapshot[key] = getattr(self._config, key, None)
                     setattr(self._config, key, overrides[key])
-
             try:
                 if not queries:
-                    return ({"query": "", "response": ""}, {"llm_judge": 0.0})
+                    return ({"query": "", "response": ""}, {})
                 q = queries[0].get("query", "")
                 try:
                     resp = self._adapter.run(q) if self._adapter else ""
                 except Exception:
                     resp = ""
-                return (
-                    {"query": q, "response": str(resp)},
-                    {"llm_judge": 0.0, "cost": 0.0, "latency": 0.0},
+                trace = {
+                    "query": q,
+                    "response": str(resp),
+                    "steps": [],
+                    "config_snapshot": (
+                        self._config.to_flat_dict()
+                        if hasattr(self._config, "to_flat_dict") else {}
+                    ),
+                }
+                from retune.optimizer.evaluator_pipeline import run_evaluators_on_trace
+                scores = run_evaluators_on_trace(
+                    getattr(self, "_evaluators", []) or [],
+                    trace,
                 )
+                return (trace, scores)
             finally:
                 for key, old_val in snapshot.items():
                     setattr(self._config, key, old_val)
