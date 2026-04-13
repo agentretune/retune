@@ -38,6 +38,8 @@ from retune.optimizers.base import BaseOptimizer
 from retune.optimizers.basic import BasicOptimizer
 from retune.storage.base import BaseStorage
 from retune.storage.sqlite_storage import SQLiteStorage
+from retune.optimizer.client import OptimizerClient  # noqa: F401
+from retune.optimizer.worker import SDKWorker  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +156,8 @@ class Retuner:
         max_free_optimizations: int = 15,
         enable_few_shot: bool = False,
         enable_routing: bool = False,
+        agent_purpose: str | None = None,
+        success_criteria: str | None = None,
     ) -> None:
         # Resolve adapter
         if isinstance(adapter, str):
@@ -209,6 +213,16 @@ class Retuner:
             )
         else:
             self._storage = SQLiteStorage(settings.storage_path)
+
+        # Cloud optimize parameters
+        self._api_key = api_key or settings.api_key
+        self._agent_purpose = agent_purpose
+        self._success_criteria = success_criteria
+        if self._mode == Mode.IMPROVE and not self._agent_purpose:
+            raise ValueError(
+                "agent_purpose='...' is required when mode=Mode.IMPROVE. "
+                "Supply a one-line description of what your agent does."
+            )
 
         # Usage gate (15 free deep operations, unlimited for premium)
         from retune.usage_gate import UsageGate
@@ -845,3 +859,86 @@ class Retuner:
             self._router = StrategyRouter()
         config = config or OptimizationConfig()
         self._router.add_variant(name, config, system_prompt)
+
+    # =====================================================================
+    # Cloud Optimization API
+    # =====================================================================
+
+    def optimize(
+        self,
+        source: str = "last_n_traces",
+        n: int = 50,
+        axes: "list[str] | str" = "auto",
+        reward: "str | dict" = "judge_with_guardrails",
+        rewriter_llm: str | None = None,
+        guardrails: dict | None = None,
+    ):
+        """Trigger a cloud optimization run.
+
+        Args:
+            source: "last_n_traces" (historical replay) or "collect_next".
+            n: number of traces to optimize over.
+            axes: list of axes to optimize, or "auto" for orchestrator-selected.
+            reward: "judge_with_guardrails" (default) or a dict with the
+                declarative reward spec.
+            rewriter_llm: model used by PromptOptimizerAgent for rewrites.
+            guardrails: overrides for the default cost/latency guardrails.
+        """
+        from retune.optimizer.report import OptimizationReport
+
+        if not self._api_key:
+            raise RuntimeError("api_key is required to call optimize()")
+
+        axes_list = ["prompt", "tools", "rag"] if axes == "auto" else list(axes)
+        reward_spec = reward if isinstance(reward, dict) else None
+        if guardrails and reward_spec is None:
+            reward_spec = {
+                "primary": {"evaluator": "llm_judge", "weight": 1.0},
+                "penalties": [
+                    {"evaluator": k, "threshold": v, "hard": True}
+                    for k, v in guardrails.items()
+                ],
+            }
+
+        client = OptimizerClient(api_key=self._api_key, base_url=settings.cloud_base_url)
+        resp = client.preauthorize(
+            source=source, n_traces=n, axes=axes_list,
+            reward_spec=reward_spec, rewriter_llm=rewriter_llm,
+        )
+        run_id = resp["run_id"]
+
+        worker = SDKWorker(
+            client=client,
+            run_id=run_id,
+            candidate_runner=self._make_candidate_runner(),
+        )
+        try:
+            worker.run()
+        except Exception:
+            client.cancel(run_id)
+            raise
+
+        raw = client.fetch_report(run_id)
+        client.commit(run_id)
+        return OptimizationReport.from_cloud_dict(raw)
+
+    def _make_candidate_runner(self):
+        """Return a callable that runs the wrapped agent with config overrides.
+
+        Phase 1: minimal implementation — the noop orchestrator doesn't send
+        RunCandidate messages, so this is effectively unreachable in the
+        happy path. Phase 2 wires real config override injection.
+        """
+        def _runner(overrides: dict, queries: list):
+            if not queries:
+                return ({"query": "", "response": ""}, {"llm_judge": 0.0})
+            q = queries[0].get("query", "")
+            try:
+                resp = self._adapter.run(q) if self._adapter else ""
+            except Exception:
+                resp = ""
+            return (
+                {"query": q, "response": str(resp)},
+                {"llm_judge": 0.0, "cost": 0.0, "latency": 0.0},
+            )
+        return _runner

@@ -19,6 +19,7 @@ from retune.core.models import (
 from retune.tools.base import RetuneTool
 from retune.tools.registry import ToolRegistry, get_registry
 from retune.wrapper import Retuner
+from retune.optimizer.report import OptimizationReport  # noqa: E402
 
 __all__ = [
     "__version__",
@@ -37,4 +38,5 @@ __all__ = [
     "WrapperResponse",
     "get_registry",
     "set_default_llm",
+    "OptimizationReport",
 ]

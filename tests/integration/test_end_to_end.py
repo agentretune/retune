@@ -98,6 +98,7 @@ class TestEndToEnd:
             storage=storage,
             config=OptimizationConfig(top_k=3, temperature=0.7),
             auto_improve=True,
+            agent_purpose="test agent",
         )
 
         r = wrapped.run("improve this")
