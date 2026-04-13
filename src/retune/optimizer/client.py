@@ -64,6 +64,7 @@ class OptimizerClient:
         rewriter_llm: str | None = None,
         traces: list[dict[str, Any]] | None = None,
         tool_metadata: list[dict[str, Any]] | None = None,
+        retrieval_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body = {
             "source": source,
@@ -76,6 +77,8 @@ class OptimizerClient:
             body["traces"] = traces
         if tool_metadata is not None:
             body["tool_metadata"] = tool_metadata
+        if retrieval_config is not None:
+            body["retrieval_config"] = retrieval_config
         return self._post("/api/v1/optimize/preauthorize", body)
 
     def commit(self, run_id: str) -> dict[str, Any]:
