@@ -865,6 +865,37 @@ class Retuner:
     # Cloud Optimization API
     # =====================================================================
 
+    def apply_report(self, report: "OptimizationReport", tier: int = 1) -> None:
+        """Apply tier-N suggestions from an OptimizationReport to the wrapped agent.
+
+        Phase 3 handles these apply_payload.action values:
+        - "drop_tool"     → remove tool from self._adapter.tools
+        - "system_prompt" (implicit, via payload key) → self._config.system_prompt = ...
+
+        Other actions are currently no-op (future phases will extend).
+        """
+        from retune.optimizer.report import OptimizationReport  # noqa: F401
+
+        def _apply(s):
+            payload = s.apply_payload or {}
+            action = payload.get("action")
+            if action == "drop_tool":
+                tool_name = payload.get("tool_name")
+                tools = getattr(self._adapter, "tools", None)
+                if tools is None:
+                    return
+                filtered = []
+                for t in tools:
+                    name = t.get("name") if isinstance(t, dict) else getattr(t, "name", None)
+                    if name != tool_name:
+                        filtered.append(t)
+                self._adapter.tools = filtered
+            elif "system_prompt" in payload:
+                self._config.system_prompt = payload["system_prompt"]
+            # Other actions: no-op for Phase 3
+
+        report.apply(tier=tier, apply_fn=_apply)
+
     def optimize(
         self,
         source: str = "last_n_traces",
