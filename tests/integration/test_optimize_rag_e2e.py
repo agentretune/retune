@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from server.app import app
-from server.optimizer.models import PromptCandidate, RAGCandidate
+from server.optimizer.models import PromptCandidate, ScoredCandidate, RAGCandidate
 
 
 @pytest.fixture
@@ -130,7 +130,12 @@ def test_phase4_rag_routing_e2e(fake_db_phase4):
          patch("server.routes.optimize.BackgroundTasks.add_task"):
 
         mock_prompt = MagicMock()
-        mock_prompt.generate_candidates.return_value = [baseline_prompt_cand]
+        mock_prompt.run_iterative.return_value = [
+            ScoredCandidate(
+                candidate=baseline_prompt_cand, scalar_score=5.0,
+                dimensions={"llm_judge": 5.0}, guardrails_held=True,
+            ),
+        ]
         mock_prompt_cls.return_value = mock_prompt
 
         mock_rag = MagicMock()
@@ -154,12 +159,6 @@ def test_phase4_rag_routing_e2e(fake_db_phase4):
         )
         assert r.status_code == 200
         run_id = r.json()["run_id"]
-
-        # Seed a result for the one prompt candidate so orchestrator doesn't block
-        get_results().put(run_id, "cp_b", {
-            "run_id": run_id, "candidate_id": "cp_b",
-            "trace": {}, "eval_scores": {"llm_judge": 5.0},
-        })
 
         from server.optimizer.orchestrator import OptimizerOrchestrator
         OptimizerOrchestrator().run(run_id, candidate_result_timeout=0.3)

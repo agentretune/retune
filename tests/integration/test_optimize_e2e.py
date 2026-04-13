@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 from server.app import app
-from server.optimizer.models import PromptCandidate
+from server.optimizer.models import PromptCandidate, ScoredCandidate
 
 
 @pytest.fixture
@@ -94,44 +94,26 @@ def test_noop_optimize_e2e(fake_db):
     get_queue().reset()
     get_results().reset()
 
-    # Seed result for the baseline candidate so the orchestrator can score it.
+    # Prompt agent returns one baseline scored candidate (only round=0, so no tier1 entry).
     _baseline_cand = PromptCandidate(
         candidate_id="cand_base", system_prompt="You are helpful.", generation_round=0
     )
 
     mock_prompt_agent = MagicMock()
-    mock_prompt_agent.generate_candidates.return_value = [_baseline_cand]
-
-    mock_judge_result = MagicMock()
-    mock_judge_result.scalar_score = 5.0
-    mock_judge_result.guardrails_held = True
-    mock_judge_result.dimensions = {"llm_judge": 5.0}
-    mock_judge_agent = MagicMock()
-    mock_judge_agent.score.return_value = mock_judge_result
-
-    def _seed_result(run_id, message):
-        """When orchestrator pushes to the queue, seed a result in the store."""
-        cid = message.get("candidate_id", "")
-        get_results().put(run_id, cid, {
-            "run_id": run_id, "candidate_id": cid,
-            "trace": {"query": "q1", "response": "r1"},
-            "eval_scores": {"llm_judge": 5.0},
-        })
-
-    mock_queue = MagicMock()
-    mock_queue.push.side_effect = _seed_result
+    mock_prompt_agent.run_iterative.return_value = [
+        ScoredCandidate(
+            candidate=_baseline_cand, scalar_score=5.0,
+            dimensions={"llm_judge": 5.0}, guardrails_held=True,
+        ),
+    ]
 
     with patch("server.routes.optimize.db", fake_db), \
          patch("server.routes.jobs.db", fake_db), \
          patch("server.optimizer.orchestrator.db", fake_db), \
          patch("server.optimizer.orchestrator.PromptOptimizerAgent",
                return_value=mock_prompt_agent), \
-         patch("server.optimizer.orchestrator.JudgeAgent",
-               return_value=mock_judge_agent), \
-         patch("server.optimizer.orchestrator.get_queue",
-               return_value=mock_queue), \
-         patch("server.optimizer.orchestrator.get_results",
-               return_value=get_results()), \
+         patch("server.optimizer.orchestrator.get_queue"), \
+         patch("server.optimizer.orchestrator.get_results"), \
          patch("server.routes.optimize.require_auth", return_value={"org": "org_1"}), \
          patch("server.routes.jobs.require_auth", return_value={"org": "org_1"}):
 

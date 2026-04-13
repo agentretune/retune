@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from server.app import app
-from server.optimizer.models import PromptCandidate
+from server.optimizer.models import PromptCandidate, ScoredCandidate
 
 
 @pytest.fixture
@@ -119,7 +119,16 @@ def test_phase3_combined_routing_e2e(fake_db_phase3):
          patch("server.routes.optimize.BackgroundTasks.add_task"):
 
         mock_prompt = MagicMock()
-        mock_prompt.generate_candidates.return_value = [baseline_cand, rewrite_cand]
+        mock_prompt.run_iterative.return_value = [
+            ScoredCandidate(
+                candidate=rewrite_cand, scalar_score=8.0,
+                dimensions={"llm_judge": 8.0}, guardrails_held=True,
+            ),
+            ScoredCandidate(
+                candidate=baseline_cand, scalar_score=5.0,
+                dimensions={"llm_judge": 5.0}, guardrails_held=True,
+            ),
+        ]
         mock_prompt_cls.return_value = mock_prompt
 
         mock_tool = MagicMock()
@@ -152,14 +161,6 @@ def test_phase3_combined_routing_e2e(fake_db_phase3):
         )
         assert r.status_code == 200
         run_id = r.json()["run_id"]
-
-        # Seed candidate results for the prompt subagent
-        results = get_results()
-        for cid, score in [("cand_base", 5.0), ("cand_rewrite", 8.0)]:
-            results.put(run_id, cid, {
-                "run_id": run_id, "candidate_id": cid,
-                "trace": {}, "eval_scores": {"llm_judge": score},
-            })
 
         from server.optimizer.orchestrator import OptimizerOrchestrator
         OptimizerOrchestrator().run(run_id, candidate_result_timeout=0.3)

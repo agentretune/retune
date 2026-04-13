@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.app import app
-from server.optimizer.models import PromptCandidate
+from server.optimizer.models import PromptCandidate, ScoredCandidate
 
 
 @pytest.fixture
@@ -96,43 +96,33 @@ def test_prompt_optimization_e2e(fake_db_phase2):
         generation_round=1,
     )
 
-    # Pre-seed candidate results in the results store so the orchestrator
-    # doesn't have to wait for any real SDK worker to post them.
-    results = get_results()
-    results.put("__e2e_run__", "cand_base", {
-        "run_id": "__e2e_run__", "candidate_id": "cand_base",
-        "trace": {"query": "q", "response": "r"},
-        "eval_scores": {"llm_judge": 5.0},
-    })
-    results.put("__e2e_run__", "cand_rewrite", {
-        "run_id": "__e2e_run__", "candidate_id": "cand_rewrite",
-        "trace": {"query": "q", "response": "r"},
-        "eval_scores": {"llm_judge": 8.0},
-    })
-
     with patch("server.routes.optimize.db", fake_db_phase2), \
          patch("server.routes.jobs.db", fake_db_phase2), \
          patch("server.optimizer.orchestrator.db", fake_db_phase2), \
          patch("server.routes.optimize.require_auth", return_value={"org": "org_1"}), \
          patch("server.routes.jobs.require_auth", return_value={"org": "org_1"}), \
-         patch("server.optimizer.orchestrator.PromptOptimizerAgent") as mock_prompt_cls:
+         patch("server.optimizer.orchestrator.PromptOptimizerAgent") as mock_prompt_cls, \
+         patch("server.optimizer.orchestrator.get_queue"), \
+         patch("server.optimizer.orchestrator.get_results"):
 
         mock_prompt = MagicMock()
-        mock_prompt.generate_candidates.return_value = [baseline_cand, rewrite_cand]
+        mock_prompt.run_iterative.return_value = [
+            ScoredCandidate(
+                candidate=rewrite_cand, scalar_score=8.0,
+                dimensions={"llm_judge": 8.0}, guardrails_held=True,
+            ),
+            ScoredCandidate(
+                candidate=baseline_cand, scalar_score=5.0,
+                dimensions={"llm_judge": 5.0}, guardrails_held=True,
+            ),
+        ]
         mock_prompt_cls.return_value = mock_prompt
 
         client = TestClient(app)
         auth = {"Authorization": "Bearer test"}
 
-        # Because the orchestrator uses a specific run_id assigned by preauthorize,
-        # we need to re-seed results after preauth with the real run_id.
-        # The simplest: preauth first to get the run_id, then seed results, then
-        # trigger the orchestrator again (it already ran from BackgroundTasks).
-        #
-        # Easier: call orch.run() directly instead of going through BackgroundTasks.
-
         # Preauthorize — but patch BackgroundTasks to prevent the auto-orchestrator
-        # from running before we seed results with the real run_id.
+        # from running before we drive it synchronously below.
         with patch("server.routes.optimize.BackgroundTasks.add_task"):
             r = client.post(
                 "/api/v1/optimize/preauthorize",
@@ -146,19 +136,7 @@ def test_prompt_optimization_e2e(fake_db_phase2):
             assert r.status_code == 200
             run_id = r.json()["run_id"]
 
-        # Seed results under the real run_id
-        results.put(run_id, "cand_base", {
-            "run_id": run_id, "candidate_id": "cand_base",
-            "trace": {"query": "q", "response": "r"},
-            "eval_scores": {"llm_judge": 5.0},
-        })
-        results.put(run_id, "cand_rewrite", {
-            "run_id": run_id, "candidate_id": "cand_rewrite",
-            "trace": {"query": "q", "response": "r"},
-            "eval_scores": {"llm_judge": 8.0},
-        })
-
-        # Now drive the orchestrator synchronously (no BackgroundTasks this time)
+        # Drive the orchestrator synchronously
         from server.optimizer.orchestrator import OptimizerOrchestrator
         OptimizerOrchestrator().run(run_id, candidate_result_timeout=0.5)
 
