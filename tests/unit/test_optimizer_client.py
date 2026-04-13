@@ -67,3 +67,22 @@ def test_fetch_report(mock_urlopen):
     client = OptimizerClient(api_key="rt-test", base_url="https://api.example.com")
     rep = client.fetch_report("r")
     assert rep["run_id"] == "r"
+
+
+@patch("retune.optimizer.client.urlopen")
+def test_preauthorize_includes_traces_in_body(mock_urlopen):
+    import json as _json
+    resp = MagicMock()
+    resp.read.return_value = b'{"run_id": "r", "runs_remaining": 14}'
+    resp.__enter__.return_value = resp
+    mock_urlopen.return_value = resp
+
+    client = OptimizerClient(api_key="rt-test", base_url="https://api.example.com")
+    traces = [{"query": "q1"}, {"query": "q2"}]
+    client.preauthorize(
+        source="last_n_traces", n_traces=2, axes=["prompt"],
+        traces=traces,
+    )
+    req = mock_urlopen.call_args[0][0]
+    body = _json.loads(req.data)
+    assert body["traces"] == traces

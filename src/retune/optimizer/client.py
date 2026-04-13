@@ -62,14 +62,18 @@ class OptimizerClient:
         axes: list[str],
         reward_spec: dict[str, Any] | None = None,
         rewriter_llm: str | None = None,
+        traces: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        return self._post("/api/v1/optimize/preauthorize", {
+        body = {
             "source": source,
             "n_traces": n_traces,
             "axes": axes,
             "reward_spec": reward_spec,
             "rewriter_llm": rewriter_llm,
-        })
+        }
+        if traces is not None:
+            body["traces"] = traces
+        return self._post("/api/v1/optimize/preauthorize", body)
 
     def commit(self, run_id: str) -> dict[str, Any]:
         return self._post(f"/api/v1/optimize/{run_id}/commit", {})

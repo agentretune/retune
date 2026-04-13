@@ -900,10 +900,20 @@ class Retuner:
                 ],
             }
 
+        traces_payload = None
+        if source == "last_n_traces":
+            try:
+                from retune.optimizer.trace_collector import collect_last_n_local_traces
+                traces_payload = collect_last_n_local_traces(self._storage, n=n)
+            except Exception as e:
+                logger.warning("Failed to collect local traces: %s", e)
+                traces_payload = []
+
         client = OptimizerClient(api_key=self._api_key, base_url=settings.cloud_base_url)
         resp = client.preauthorize(
             source=source, n_traces=n, axes=axes_list,
             reward_spec=reward_spec, rewriter_llm=rewriter_llm,
+            traces=traces_payload,
         )
         run_id = resp["run_id"]
 
