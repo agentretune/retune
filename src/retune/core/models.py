@@ -128,6 +128,7 @@ class OptimizationConfig(BaseModel):
     reasoning_strategy: str | None = None  # "react", "structured", "cot"
     max_tool_calls: int | None = None
     enabled_tools: list[str] | None = None
+    few_shot_examples: list[dict[str, Any]] | None = None
 
     # Custom parameters for framework-specific tuning
     custom_params: dict[str, Any] = Field(default_factory=dict)
