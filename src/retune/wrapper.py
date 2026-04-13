@@ -40,6 +40,7 @@ from retune.storage.base import BaseStorage
 from retune.storage.sqlite_storage import SQLiteStorage
 from retune.optimizer.client import OptimizerClient  # noqa: F401
 from retune.optimizer.worker import SDKWorker  # noqa: F401
+from retune.optimizer.tool_introspection import introspect_tools  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -909,11 +910,22 @@ class Retuner:
                 logger.warning("Failed to collect local traces: %s", e)
                 traces_payload = []
 
+        tool_metadata_payload = None
+        if "tools" in axes_list:
+            try:
+                tool_metadata_payload = [
+                    md.model_dump() for md in introspect_tools(self._adapter)
+                ]
+            except Exception as e:
+                logger.warning("Tool introspection failed: %s", e)
+                tool_metadata_payload = []
+
         client = OptimizerClient(api_key=self._api_key, base_url=settings.cloud_base_url)
         resp = client.preauthorize(
             source=source, n_traces=n, axes=axes_list,
             reward_spec=reward_spec, rewriter_llm=rewriter_llm,
             traces=traces_payload,
+            tool_metadata=tool_metadata_payload,
         )
         run_id = resp["run_id"]
 

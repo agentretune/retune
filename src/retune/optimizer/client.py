@@ -63,6 +63,7 @@ class OptimizerClient:
         reward_spec: dict[str, Any] | None = None,
         rewriter_llm: str | None = None,
         traces: list[dict[str, Any]] | None = None,
+        tool_metadata: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         body = {
             "source": source,
@@ -73,6 +74,8 @@ class OptimizerClient:
         }
         if traces is not None:
             body["traces"] = traces
+        if tool_metadata is not None:
+            body["tool_metadata"] = tool_metadata
         return self._post("/api/v1/optimize/preauthorize", body)
 
     def commit(self, run_id: str) -> dict[str, Any]:
