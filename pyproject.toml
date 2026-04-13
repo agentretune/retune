@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "retune"
-version = "0.1.0"
+version = "0.3.0"
 description = "Retune your AI agents — self-improving evaluation & optimization framework"
 readme = "README.md"
 license = "MIT"
