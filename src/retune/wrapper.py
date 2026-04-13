@@ -935,20 +935,33 @@ class Retuner:
     def _make_candidate_runner(self):
         """Return a callable that runs the wrapped agent with config overrides.
 
-        Phase 1: minimal implementation — the noop orchestrator doesn't send
-        RunCandidate messages, so this is effectively unreachable in the
-        happy path. Phase 2 wires real config override injection.
+        Phase 2: applies `config_overrides` by temporarily mutating
+        self._config (system_prompt, few_shot_examples), running the candidate,
+        then restoring the original config. Adapter implementations read from
+        self._config at call time, so this override propagates correctly.
         """
         def _runner(overrides: dict, queries: list):
-            if not queries:
-                return ({"query": "", "response": ""}, {"llm_judge": 0.0})
-            q = queries[0].get("query", "")
+            # Snapshot the fields we're about to override
+            snapshot = {}
+            for key in ("system_prompt", "few_shot_examples"):
+                if key in overrides:
+                    snapshot[key] = getattr(self._config, key, None)
+                    setattr(self._config, key, overrides[key])
+
             try:
-                resp = self._adapter.run(q) if self._adapter else ""
-            except Exception:
-                resp = ""
-            return (
-                {"query": q, "response": str(resp)},
-                {"llm_judge": 0.0, "cost": 0.0, "latency": 0.0},
-            )
+                if not queries:
+                    return ({"query": "", "response": ""}, {"llm_judge": 0.0})
+                q = queries[0].get("query", "")
+                try:
+                    resp = self._adapter.run(q) if self._adapter else ""
+                except Exception:
+                    resp = ""
+                return (
+                    {"query": q, "response": str(resp)},
+                    {"llm_judge": 0.0, "cost": 0.0, "latency": 0.0},
+                )
+            finally:
+                for key, old_val in snapshot.items():
+                    setattr(self._config, key, old_val)
+
         return _runner
