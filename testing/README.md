@@ -13,10 +13,10 @@ testing/
 ├── README.md                    ← you are here
 ├── setup/                       ← bootstrap local infra
 │   ├── env.example              ← env vars you need
-│   ├── 01_start_postgres.sh     ← local Postgres via Docker
-│   ├── 02_init_db.sh            ← run Alembic migrations
+│   ├── 01_start_postgres.py     ← local Postgres via Docker (cross-platform)
+│   ├── 02_init_db.py            ← run Alembic migrations
 │   ├── 03_bootstrap_org.py      ← create first org/user/API key
-│   └── 04_start_cloud.sh        ← boot the cloud backend
+│   └── 04_start_cloud.py        ← boot the cloud backend
 ├── agents/                      ← test agent fixtures
 │   ├── echo_agent.py            ← simplest possible
 │   ├── bad_prompt_agent.py      ← vague system prompt → PromptOptim has room
@@ -58,12 +58,12 @@ cp testing/setup/env.example testing/setup/.env
 # Edit testing/setup/.env — set ANTHROPIC_API_KEY and/or OPENAI_API_KEY
 
 # 2. Start infra (you do these manually because they need your system access)
-bash testing/setup/01_start_postgres.sh      # starts Postgres in Docker
-bash testing/setup/02_init_db.sh              # alembic upgrade head
+python testing/setup/01_start_postgres.py    # starts Postgres in Docker
+python testing/setup/02_init_db.py            # alembic upgrade head
 python testing/setup/03_bootstrap_org.py      # creates test org + prints RETUNE_API_KEY
 # Copy the printed RETUNE_API_KEY into testing/setup/.env
 
-bash testing/setup/04_start_cloud.sh          # uvicorn on :8001 (leave this running)
+python testing/setup/04_start_cloud.py        # uvicorn on :8001 (leave this running)
 
 # 3. In another terminal — start frontend
 cd retune-frontend && npm run dev             # :5173 (leave running)
