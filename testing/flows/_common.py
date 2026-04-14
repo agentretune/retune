@@ -7,6 +7,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+# Windows console defaults to cp1252 which can't render the Unicode arrows
+# and check marks used in output. Force UTF-8 on stdout/stderr so these
+# scripts work identically on Windows cmd, PowerShell, macOS, and Linux.
+for stream_name in ("stdout", "stderr"):
+    stream = getattr(sys, stream_name, None)
+    if stream is not None and hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
 
 def load_env() -> None:
     """Load testing/setup/.env and add repo paths to sys.path."""

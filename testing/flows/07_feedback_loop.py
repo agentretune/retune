@@ -62,7 +62,7 @@ def _submit_feedback(run_id: str, suggestion_id: str, accepted: bool, comment: s
 def main() -> None:
     banner("FLOW 07 — Feedback loop: reject then re-run")
 
-    storage = SQLiteStorage(path="./retune_test_07.db")
+    storage = SQLiteStorage(db_path="./retune_test_07.db")
     agent = make_bad_prompt_agent()
 
     retuner = Retuner(

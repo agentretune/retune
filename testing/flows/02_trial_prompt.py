@@ -31,7 +31,9 @@ load_env()
 require_env("RETUNE_API_KEY", "RETUNE_CLOUD_BASE_URL")
 
 from retune import Mode, Retuner  # noqa: E402
-from retune.evaluators import CostEvaluator, LatencyEvaluator, LLMJudgeEvaluator  # noqa: E402
+from retune.evaluators.cost import CostEvaluator  # noqa: E402
+from retune.evaluators.latency import LatencyEvaluator  # noqa: E402
+from retune.evaluators.llm_judge import LLMJudgeEvaluator  # noqa: E402
 from retune.storage import SQLiteStorage  # noqa: E402
 
 from agents.bad_prompt_agent import SAMPLE_QUERIES, make_bad_prompt_agent  # noqa: E402
@@ -43,7 +45,7 @@ def main() -> None:
     # Point SDK at local cloud
     os.environ["RETUNE_CLOUD_BASE_URL"] = os.environ["RETUNE_CLOUD_BASE_URL"]
 
-    storage = SQLiteStorage(path="./retune_test_02.db")
+    storage = SQLiteStorage(db_path="./retune_test_02.db")
     agent = make_bad_prompt_agent()
 
     retuner = Retuner(

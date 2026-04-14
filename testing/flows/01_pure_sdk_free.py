@@ -21,7 +21,8 @@ from _common import banner, load_env, print_checklist  # noqa: E402
 load_env()
 
 from retune import Mode, Retuner  # noqa: E402
-from retune.evaluators import CostEvaluator, LatencyEvaluator  # noqa: E402
+from retune.evaluators.cost import CostEvaluator  # noqa: E402
+from retune.evaluators.latency import LatencyEvaluator  # noqa: E402
 
 from agents.echo_agent import make_echo_agent  # noqa: E402
 
@@ -31,7 +32,7 @@ def main() -> None:
 
     # Use a test-specific SQLite so we don't pollute the default retune.db
     from retune.storage import SQLiteStorage
-    storage = SQLiteStorage(path="./retune_test_01.db")
+    storage = SQLiteStorage(db_path="./retune_test_01.db")
 
     retuner = Retuner(
         agent=make_echo_agent(),

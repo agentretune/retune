@@ -27,7 +27,7 @@ from agents.tool_agent import SAMPLE_QUERIES, make_tool_agent  # noqa: E402
 def main() -> None:
     banner("FLOW 08 — Apply Tier 1 drop_tool, confirm agent.tools mutates")
 
-    storage = SQLiteStorage(path="./retune_test_08.db")
+    storage = SQLiteStorage(db_path="./retune_test_08.db")
     agent = make_tool_agent()
 
     print(f"\n→ Before: agent.tools = {[t['name'] for t in agent.tools]}")

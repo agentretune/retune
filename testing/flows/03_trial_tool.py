@@ -32,7 +32,7 @@ from agents.tool_agent import SAMPLE_QUERIES, make_tool_agent  # noqa: E402
 def main() -> None:
     banner("FLOW 03 — Free trial: tool optimization only")
 
-    storage = SQLiteStorage(path="./retune_test_03.db")
+    storage = SQLiteStorage(db_path="./retune_test_03.db")
     agent = make_tool_agent()
 
     retuner = Retuner(

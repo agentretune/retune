@@ -32,7 +32,7 @@ from agents.rag_agent import SAMPLE_QUERIES, make_rag_agent  # noqa: E402
 def main() -> None:
     banner("FLOW 04 — Free trial: RAG optimization only")
 
-    storage = SQLiteStorage(path="./retune_test_04.db")
+    storage = SQLiteStorage(db_path="./retune_test_04.db")
     agent = make_rag_agent(k=5, chunk_size=1500)   # intentionally oversized
 
     retuner = Retuner(

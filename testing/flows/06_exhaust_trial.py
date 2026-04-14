@@ -43,7 +43,7 @@ def main() -> None:
         print("Aborted.")
         return
 
-    storage = SQLiteStorage(path="./retune_test_06.db")
+    storage = SQLiteStorage(db_path="./retune_test_06.db")
     retuner = Retuner(
         agent=make_echo_agent(),
         adapter="custom",

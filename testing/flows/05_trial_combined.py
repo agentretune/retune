@@ -21,7 +21,9 @@ load_env()
 require_env("RETUNE_API_KEY", "RETUNE_CLOUD_BASE_URL")
 
 from retune import Mode, Retuner  # noqa: E402
-from retune.evaluators import CostEvaluator, LatencyEvaluator, LLMJudgeEvaluator  # noqa: E402
+from retune.evaluators.cost import CostEvaluator  # noqa: E402
+from retune.evaluators.latency import LatencyEvaluator  # noqa: E402
+from retune.evaluators.llm_judge import LLMJudgeEvaluator  # noqa: E402
 from retune.storage import SQLiteStorage  # noqa: E402
 
 from agents.rag_agent import SAMPLE_QUERIES, make_rag_agent  # noqa: E402
@@ -30,7 +32,7 @@ from agents.rag_agent import SAMPLE_QUERIES, make_rag_agent  # noqa: E402
 def main() -> None:
     banner("FLOW 05 — Free trial: combined prompt + tools + rag")
 
-    storage = SQLiteStorage(path="./retune_test_05.db")
+    storage = SQLiteStorage(db_path="./retune_test_05.db")
     agent = make_rag_agent(k=5, chunk_size=1500)
 
     retuner = Retuner(
