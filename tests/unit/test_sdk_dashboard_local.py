@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from fastapi.testclient import TestClient
+import pytest
+
+pytest.importorskip("fastapi", reason="fastapi not installed")
+from fastapi.testclient import TestClient  # noqa: E402
 
 
 def test_dashboard_home_with_traces():

@@ -5,9 +5,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-from server.app import app
-from server.optimizer.models import PromptCandidate, ScoredCandidate
+
+pytest.importorskip("fastapi", reason="fastapi not installed")
+from fastapi.testclient import TestClient  # noqa: E402
+from server.app import app  # noqa: E402
+from server.optimizer.models import PromptCandidate, ScoredCandidate  # noqa: E402
 
 
 @pytest.fixture
