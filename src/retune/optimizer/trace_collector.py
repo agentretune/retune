@@ -13,13 +13,13 @@ def _to_plain_dict(obj: Any) -> dict[str, Any]:
     # Pydantic v2 model
     if hasattr(obj, "model_dump"):
         try:
-            return obj.model_dump(mode="json")
+            return dict(obj.model_dump(mode="json"))
         except Exception:
             pass
     # Dataclass or Pydantic v1
     if hasattr(obj, "dict") and callable(obj.dict):
         try:
-            return obj.dict()
+            return dict(obj.dict())
         except Exception:
             pass
     if isinstance(obj, dict):

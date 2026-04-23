@@ -34,7 +34,8 @@ class OptimizerClient:
         )
         try:
             with urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read() or b"{}")
+                result: dict[str, Any] = json.loads(resp.read() or b"{}")
+                return result
         except HTTPError as e:
             if e.code == 402:
                 raise RuntimeError(
@@ -51,7 +52,8 @@ class OptimizerClient:
             with urlopen(req, timeout=timeout) as resp:
                 if resp.status == 204:
                     return None
-                return json.loads(resp.read() or b"{}")
+                result: dict[str, Any] = json.loads(resp.read() or b"{}")
+                return result
         except HTTPError as e:
             raise RuntimeError(f"Cloud {path} failed: {e.code} {e.reason}") from e
 

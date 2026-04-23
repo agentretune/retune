@@ -45,7 +45,7 @@ class SDKWorker:
             if mtype == "run_candidate":
                 self._handle_candidate(msg)
             elif mtype == "job_complete":
-                return msg["report_url"]
+                return str(msg["report_url"])
             elif mtype == "job_failed":
                 raise RuntimeError(f"Optimization run failed: {msg.get('reason', 'unknown')}")
             else:
