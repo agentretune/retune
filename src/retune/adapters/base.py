@@ -54,6 +54,16 @@ class BaseAdapter(ABC):
         """Apply a system prompt to the wrapped agent. Override in subclasses."""
         pass
 
+    def apply_retrieval_override(self, **kwargs: Any) -> None:
+        """Apply runtime retrieval-config overrides (k, chunk_size, etc.).
+
+        Default no-op. Adapters that support runtime override (LangChain,
+        LangGraph) override this. Adapters that don't support overrides
+        inherit the no-op — optimizer suggestions for them land in Tier 2
+        (copy-paste snippets) only.
+        """
+        pass
+
     def get_agent(self) -> Any:
         """Return the underlying agent object."""
         return self.agent

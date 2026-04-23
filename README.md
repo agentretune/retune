@@ -35,6 +35,16 @@ pip install retune
 | Everything | `pip install retune[all]` | All of the above |
 | Dev | `pip install retune[dev]` | pytest, ruff, mypy |
 
+## Feature Availability
+
+| Feature | Availability |
+|---|---|
+| Observability (tracing) | OSS, free, local-first |
+| Evaluation (all evaluators incl. LLM judge) | OSS, free, BYO-key |
+| Optimization (prompts + tools + RAG) | Cloud, 15 free trial runs, then Pro/Team/Enterprise |
+| Local dashboard | OSS (`retune dashboard`) |
+| Hosted dashboard | agentretune.com (Pro+) |
+
 ## Quickstart
 
 ```python
@@ -47,13 +57,24 @@ def my_agent(query: str) -> str:
 # Wrap it
 retuner = Retuner(
     agent=my_agent,
-    adapter="custom",
+    adapter="langchain",
     mode=Mode.OBSERVE,
+    api_key="rt-...",           # optional; required only for optimize()
+    agent_purpose="...",        # required when mode=Mode.IMPROVE
 )
 
-# Use it -- same interface, now with traces
-response = retuner.run("What is machine learning?")
-print(response.output)
+# Run your agent normally — retuner captures traces
+response = retuner.run("What is ML?")
+
+# When you want to optimize
+retuner.set_mode(Mode.IMPROVE)
+report = retuner.optimize(
+    source="last_n_traces", n=20,
+    axes=["prompt", "tools", "rag"],
+    rewriter_llm="claude-3-7-sonnet",
+)
+report.show()
+retuner.apply_report(report, tier=1)  # apply one-click suggestions
 ```
 
 ## Framework Adapters

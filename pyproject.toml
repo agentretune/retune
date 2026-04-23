@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "retune"
-version = "0.1.0"
+version = "0.3.0"
 description = "Retune your AI agents — self-improving evaluation & optimization framework"
 readme = "README.md"
 license = "MIT"
@@ -94,8 +94,10 @@ line-length = 100
 select = ["E", "F", "I", "W"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "retune-cloud/tests"]
 asyncio_mode = "auto"
+pythonpath = ["src", "retune-cloud"]
+norecursedirs = ["retune-cloud/tests/unit", ".git", "__pycache__", "*.egg-info", ".venv", "myenv"]
 
 [tool.mypy]
 python_version = "3.10"

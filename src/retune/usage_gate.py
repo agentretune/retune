@@ -106,6 +106,16 @@ class UsageGate:
                 "Upgrade for unlimited: https://agentretune.com/pricing"
             )
 
+    def note_preauthorize_response(self, response: dict) -> None:
+        """Record runs_remaining returned by /v1/optimize/preauthorize.
+
+        Cloud is authoritative; this is a local cache for status display.
+        """
+        if "runs_remaining" in response:
+            remaining = int(response["runs_remaining"])
+            self._cloud_count = max(0, self._limit - remaining)
+            self._last_check = time.time()
+
     def _refresh_from_cloud(self) -> None:
         """Check cloud API for current plan and usage."""
         if not self._api_key:

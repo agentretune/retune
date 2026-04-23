@@ -356,3 +356,21 @@ class LangChainAdapter(BaseAdapter):
         for key, value in flat.items():
             if hasattr(self._config, key):
                 setattr(self._config, key, value)
+
+    def apply_retrieval_override(self, **kwargs: Any) -> None:
+        # Find the retriever on the adapter or its underlying chain
+        retriever = getattr(self, "_retriever", None)
+        if retriever is None:
+            chain = getattr(self, "_chain", None) or getattr(self, "_agent", None)
+            retriever = getattr(chain, "retriever", None) if chain else None
+        if retriever is None:
+            return
+        if "retrieval_k" in kwargs:
+            try:
+                retriever.search_kwargs = {
+                    **getattr(retriever, "search_kwargs", {}),
+                    "k": int(kwargs["retrieval_k"]),
+                }
+            except Exception:
+                pass   # Adapter doesn't support search_kwargs — no-op
+        # Other overrides (chunk_size, reranker) are no-op in Phase 4

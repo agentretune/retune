@@ -82,6 +82,7 @@ class TestRetuner:
             evaluators=[MockEvaluator()],
             storage=SQLiteStorage(str(tmp_path / "test.db")),
             config=OptimizationConfig(top_k=3),
+            agent_purpose="test agent",
         )
         response = wrapped.run("test")
         assert response.trace is not None
@@ -186,6 +187,7 @@ class TestSuggestionManagement:
             evaluators=[MockEvaluator()],
             config=config or OptimizationConfig(top_k=3, temperature=0.7),
             storage=SQLiteStorage(str(tmp_path / "test.db")),
+            agent_purpose="test agent",
         )
 
     def test_suggestions_start_pending(self, tmp_path):
