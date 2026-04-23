@@ -16,16 +16,32 @@ app = FastAPI(title="Retune Local Dashboard")
 
 def _get_storage():
     """Build a SQLiteStorage against the configured path."""
-    from retune.storage.sqlite import SQLiteStorage
+    from retune.storage.sqlite_storage import SQLiteStorage
     path = os.environ.get("RETUNE_STORAGE_PATH", "./retune.db")
-    return SQLiteStorage(path=path)
+    return SQLiteStorage(path)
 
 
-def _render_trace_row(trace: dict) -> str:
+def _render_trace_row(trace) -> str:
+    if hasattr(trace, "query"):
+        query = (str(trace.query) or "")[:80].replace("<", "&lt;").replace(">", "&gt;")
+        response = (str(trace.response) or "")[:80].replace("<", "&lt;").replace(">", "&gt;")
+        dur = trace.duration_ms if hasattr(trace, "duration_ms") else 0
+        mode = trace.mode.value if hasattr(trace.mode, "value") else str(trace.mode)
+        steps = len(trace.steps) if hasattr(trace, "steps") else 0
+        scores = ", ".join(
+            f"{r.evaluator_name}={r.score:.2f}"
+            for r in (trace.eval_results or [])
+        ) or "N/A"
+        return (
+            f"<tr><td>{query}</td><td>{response}</td>"
+            f"<td>{mode}</td><td>{steps}</td>"
+            f"<td>{dur:.0f} ms</td><td>{scores}</td></tr>"
+        )
+    # Fallback for dict
     query = (trace.get("query") or "")[:80].replace("<", "&lt;").replace(">", "&gt;")
     response = (trace.get("response") or "")[:80].replace("<", "&lt;").replace(">", "&gt;")
     dur = trace.get("duration_ms") or 0
-    return f"<tr><td>{query}</td><td>{response}</td><td>{dur:.0f} ms</td></tr>"
+    return f"<tr><td>{query}</td><td>{response}</td><td colspan='4'>{dur:.0f} ms</td></tr>"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -64,7 +80,7 @@ def home() -> str:
       <h1>Retune Local Dashboard</h1>
       <p>{len(traces)} recent traces (local SQLite).</p>
       <table>
-        <tr><th>Query</th><th>Response</th><th>Duration</th></tr>
+        <tr><th>Query</th><th>Response</th><th>Mode</th><th>Steps</th><th>Duration</th><th>Eval Scores</th></tr>
         {rows}
       </table>
     </body>
