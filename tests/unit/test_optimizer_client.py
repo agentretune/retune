@@ -60,7 +60,11 @@ def test_poll_pending_returns_none_on_204(mock_urlopen):
 @patch("retune.optimizer.client.urlopen")
 def test_fetch_report(mock_urlopen):
     resp = MagicMock()
-    resp.read.return_value = b'{"run_id": "r", "tier1": [], "tier2": [], "tier3": [], "markdown": "# empty", "understanding": "", "summary": {}, "pareto_data": []}'
+    resp.read.return_value = (
+        b'{"run_id": "r", "tier1": [], "tier2": [], "tier3": [],'
+        b' "markdown": "# empty", "understanding": "",'
+        b' "summary": {}, "pareto_data": []}'
+    )
     resp.__enter__.return_value = resp
     mock_urlopen.return_value = resp
 

@@ -16,8 +16,11 @@ User flow:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from retune.optimizer.report import OptimizationReport
 
 from retune.adapters import get_adapter
 from retune.adapters.base import BaseAdapter
@@ -34,14 +37,14 @@ from retune.core.models import (
 from retune.evaluators import get_evaluator
 from retune.evaluators.base import BaseEvaluator
 from retune.memory.store import MemoryStore
+from retune.optimizer.client import OptimizerClient  # noqa: F401
+from retune.optimizer.retrieval_introspection import introspect_retrieval_config  # noqa: F401
+from retune.optimizer.tool_introspection import introspect_tools  # noqa: F401
+from retune.optimizer.worker import SDKWorker  # noqa: F401
 from retune.optimizers.base import BaseOptimizer
 from retune.optimizers.basic import BasicOptimizer
 from retune.storage.base import BaseStorage
 from retune.storage.sqlite_storage import SQLiteStorage
-from retune.optimizer.client import OptimizerClient  # noqa: F401
-from retune.optimizer.worker import SDKWorker  # noqa: F401
-from retune.optimizer.tool_introspection import introspect_tools  # noqa: F401
-from retune.optimizer.retrieval_introspection import introspect_retrieval_config  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

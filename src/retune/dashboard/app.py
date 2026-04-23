@@ -10,7 +10,6 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
-
 app = FastAPI(title="Retune Local Dashboard")
 
 
@@ -61,7 +60,8 @@ def home() -> str:
         return """
         <html><body>
         <h1>Retune Local Dashboard</h1>
-        <p>No traces yet. Wrap your agent with Retuner(mode=Mode.OBSERVE, ...) and run some queries.</p>
+        <p>No traces yet. Wrap your agent with
+        Retuner(mode=Mode.OBSERVE, ...) and run some queries.</p>
         </body></html>
         """
     rows = "\n".join(_render_trace_row(t) for t in traces)
@@ -80,7 +80,8 @@ def home() -> str:
       <h1>Retune Local Dashboard</h1>
       <p>{len(traces)} recent traces (local SQLite).</p>
       <table>
-        <tr><th>Query</th><th>Response</th><th>Mode</th><th>Steps</th><th>Duration</th><th>Eval Scores</th></tr>
+        <tr><th>Query</th><th>Response</th><th>Mode</th>
+        <th>Steps</th><th>Duration</th><th>Eval Scores</th></tr>
         {rows}
       </table>
     </body>

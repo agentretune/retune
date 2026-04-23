@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from server.app import app
-from server.optimizer.models import PromptCandidate, ScoredCandidate, RAGCandidate
+from server.optimizer.models import PromptCandidate, RAGCandidate, ScoredCandidate
 
 
 @pytest.fixture

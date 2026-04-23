@@ -1,7 +1,7 @@
 """Retuner.apply_report handles drop_tool action by mutating adapter.tools."""
 from __future__ import annotations
 
-from retune import Retuner, Mode
+from retune import Mode, Retuner
 from retune.optimizer.models import Suggestion
 from retune.optimizer.report import OptimizationReport
 

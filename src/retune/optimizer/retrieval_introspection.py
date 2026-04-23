@@ -33,10 +33,15 @@ def introspect_retrieval_config(adapter: Any) -> RetrievalConfig | None:
         _reranker = getattr(adapter, "reranker", None)
         _reranker_model = getattr(_reranker, "model", None) if _reranker is not None else None
         _embeddings = getattr(retriever, "embeddings", None)
-        _embedding_model_raw = getattr(_embeddings, "model", None) if _embeddings is not None else None
+        _embedding_model_raw = (
+            getattr(_embeddings, "model", None) if _embeddings is not None else None
+        )
         _embedding_model = _embedding_model_raw if isinstance(_embedding_model_raw, str) else None
         _chunk_overlap_raw = getattr(retriever, "chunk_overlap", 200)
-        _chunk_overlap = int(_chunk_overlap_raw) if isinstance(_chunk_overlap_raw, (int, float)) else 200
+        _chunk_overlap = (
+            int(_chunk_overlap_raw)
+            if isinstance(_chunk_overlap_raw, (int, float)) else 200
+        )
         return RetrievalConfig(
             retrieval_k=int(getattr(retriever, "search_kwargs", {}).get("k", 5)),
             chunk_size=int(getattr(retriever, "chunk_size", 1000) or 1000),

@@ -16,10 +16,10 @@ from retune.core.models import (
     Suggestion,
     WrapperResponse,
 )
+from retune.optimizer.report import OptimizationReport  # noqa: E402
 from retune.tools.base import RetuneTool
 from retune.tools.registry import ToolRegistry, get_registry
 from retune.wrapper import Retuner
-from retune.optimizer.report import OptimizationReport  # noqa: E402
 
 __all__ = [
     "__version__",

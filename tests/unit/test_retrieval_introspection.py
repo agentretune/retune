@@ -4,7 +4,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from retune.optimizer.retrieval_introspection import introspect_retrieval_config
-from retune.optimizer.retrieval_config import RetrievalConfig
 
 
 def test_adapter_with_retrieval_config_dict():

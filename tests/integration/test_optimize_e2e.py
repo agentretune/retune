@@ -6,7 +6,7 @@ Uses FastAPI TestClient as transport; fakes the DB layer in-process.
 """
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient

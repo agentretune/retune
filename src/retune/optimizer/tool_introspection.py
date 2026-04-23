@@ -41,7 +41,10 @@ def _extract_one(tool_obj: Any) -> ToolMetadata | None:
             args_schema = args_schema_raw
         else:
             args_schema = {}
-        is_async = getattr(tool_obj, "is_async", False) or getattr(tool_obj, "coroutine", False) is not None
+        is_async = (
+            getattr(tool_obj, "is_async", False)
+            or getattr(tool_obj, "coroutine", False) is not None
+        )
         return ToolMetadata(
             name=str(name),
             description=description,

@@ -1,7 +1,7 @@
 """SDK candidate runner applies + restores config overrides."""
 from __future__ import annotations
 
-from retune import Retuner, Mode
+from retune import Mode, Retuner
 
 
 def test_runner_applies_system_prompt_override_and_restores():

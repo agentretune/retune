@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from retune import Retuner, Mode
+from retune import Mode, Retuner
 
 
 def test_runner_runs_registered_evaluators():

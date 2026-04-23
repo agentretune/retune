@@ -38,7 +38,7 @@ class OptimizerClient:
         except HTTPError as e:
             if e.code == 402:
                 raise RuntimeError(
-                    f"Optimization run limit reached (402). Upgrade at https://agentretune.com/pricing"
+                    "Optimization run limit reached (402). Upgrade at https://agentretune.com/pricing"
                 ) from e
             raise RuntimeError(f"Cloud {path} failed: {e.code} {e.reason}") from e
         except URLError as e:

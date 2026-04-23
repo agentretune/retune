@@ -8,7 +8,10 @@ from retune.optimizer.client import OptimizerClient
 
 logger = logging.getLogger(__name__)
 
-CandidateRunner = Callable[[dict[str, Any], list[dict[str, Any]]], tuple[dict[str, Any], dict[str, float]]]
+CandidateRunner = Callable[
+    [dict[str, Any], list[dict[str, Any]]],
+    tuple[dict[str, Any], dict[str, float]],
+]
 
 
 class SDKWorker:

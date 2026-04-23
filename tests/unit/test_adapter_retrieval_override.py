@@ -1,8 +1,6 @@
 """Adapter.apply_retrieval_override — base no-op + LangChain mutates search_kwargs."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 
 def test_base_adapter_no_op():
     from retune.adapters.base import BaseAdapter

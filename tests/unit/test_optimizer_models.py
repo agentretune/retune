@@ -5,11 +5,11 @@ import pytest
 from pydantic import ValidationError
 
 from retune.optimizer.models import (
-    RunCandidateMsg,
     CandidateResultMsg,
     JobCompleteMsg,
-    Suggestion,
     OptimizationReport,
+    RunCandidateMsg,
+    Suggestion,
 )
 
 

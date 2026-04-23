@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from retune import Retuner, Mode
+from retune import Mode, Retuner
 
 
 def _mk_agent():

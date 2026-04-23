@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from retune.optimizer.models import OptimizationReport as _BaseReport, Suggestion
+from retune.optimizer.models import OptimizationReport as _BaseReport
+from retune.optimizer.models import Suggestion
 
 
 class OptimizationReport(_BaseReport):
